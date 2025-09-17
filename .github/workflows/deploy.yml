@@ -1,0 +1,86 @@
+name: Build and Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Setup Emscripten
+      uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: 'latest'
+        actions-cache-folder: 'emsdk-cache'
+        
+    - name: Verify Emscripten installation
+      run: |
+        emcc --version
+        which emcc
+        
+    - name: Build WebAssembly MCMC module
+      run: |
+        echo "🔥 Building C++ MCMC WebAssembly module..."
+        emcc src/mcmc.cpp -o web/mcmc_module.js \
+          -s EXPORTED_FUNCTIONS="['_create_sampler', '_destroy_sampler', '_create_adaptive_data', '_destroy_adaptive_data', '_reset_adaptive_data', '_run_sir_simulation', '_mcmc_step', '_mcmc_step_adaptive', '_enable_adaptive_sampling', '_update_empirical_stats', '_add_sample_to_adaptive', '_get_adaptive_info', '_malloc', '_free']" \
+          -s EXPORTED_RUNTIME_METHODS="['ccall', 'cwrap', 'getValue', 'setValue']" \
+          -s ALLOW_MEMORY_GROWTH=1 \
+          -s MODULARIZE=1 \
+          -s EXPORT_NAME="'MCMCModule'" \
+          -O3 \
+          -std=c++17 \
+          --bind
+          
+    - name: Verify WebAssembly build
+      run: |
+        echo "📁 Checking WebAssembly output files:"
+        ls -la web/mcmc_module.*
+        echo "✅ WebAssembly build complete!"
+        
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+      
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: './web'
+
+  deploy:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+      
+    - name: Display deployment URL
+      run: |
+        echo "🚀 Deployed to: ${{ steps.deployment.outputs.page_url }}"
+        echo "📊 Your Bayesian SIR application is now live!"
