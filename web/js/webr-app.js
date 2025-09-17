@@ -6,6 +6,9 @@ let mcmcSamplers = []; // Array of C++ samplers for 4 chains
 let mcmcAdaptiveData = []; // Array of adaptive data for 4 chains
 let simulationData = null; // Store SIR simulation results
 let observedData = null; // Store synthetic observed data for MCMC fitting
+let customData = null; // Store user-uploaded custom data
+let isUsingCustomData = false; // Track whether we're using custom data
+let mcmcAlgorithm = 'adaptive'; // Track selected MCMC algorithm type
 let mcmcRunning = false;
 let mcmcData = {
     chains: [
@@ -359,7 +362,7 @@ async function startMCMC() {
         const maxSteps = parseInt(document.getElementById('mcmc_steps').value);
         const burnin = parseInt(document.getElementById('burnin').value);
         
-        console.log(`[MCMC] Starting ${maxSteps} steps with ${burnin} burnin (4 adaptive chains)`);
+        console.log(`[MCMC] Starting ${maxSteps} steps with ${burnin} burnin (4 chains) using ${mcmcAlgorithm} algorithm`);
         await runMCMCLoop(mcmcData.chainParams, maxSteps, burnin);
         
     } catch (error) {
@@ -425,15 +428,17 @@ async function runMCMCLoop(initialParams, maxSteps, burnin) {
                     console.log(`[MCMC] Trimmed traces for chain ${chainId} (keeping last ${MAX_TRACE_LENGTH})`);
                 }
                 
-                // Enable adaptive MCMC after adaptation start
-                if (step === MCMC_PARAMS.adaptation_start) {
-                    const success = mcmcModule.ccall('enable_adaptive_sampling', 'number', ['number'], [mcmcAdaptiveData[chainId]]);
-                    if (success) {
-                        console.log(`[MCMC] Chain ${chainId} enabled adaptive sampling at step ${step}`);
+                // Enable adaptive features only if using adaptive algorithm
+                if (mcmcAlgorithm === 'adaptive') {
+                    if (step === MCMC_PARAMS.adaptation_start) {
+                        const success = mcmcModule.ccall('enable_adaptive_sampling', 'number', ['number'], [mcmcAdaptiveData[chainId]]);
+                        if (success) {
+                            console.log(`[MCMC] Chain ${chainId} enabled adaptive sampling at step ${step}`);
+                        }
+                    } else if (step > MCMC_PARAMS.adaptation_start && step % MCMC_PARAMS.adaptation_interval === 0) {
+                        // Update empirical statistics periodically
+                        mcmcModule.ccall('update_empirical_stats', 'number', ['number', 'number'], [mcmcSamplers[chainId], mcmcAdaptiveData[chainId]]);
                     }
-                } else if (step > MCMC_PARAMS.adaptation_start && step % MCMC_PARAMS.adaptation_interval === 0) {
-                    // Update empirical statistics periodically
-                    mcmcModule.ccall('update_empirical_stats', 'number', ['number', 'number'], [mcmcSamplers[chainId], mcmcAdaptiveData[chainId]]);
                 }
             }
             
@@ -492,7 +497,7 @@ async function runMCMCLoop(initialParams, maxSteps, burnin) {
     }
 }
 
-// C++ Adaptive MCMC step function  
+// C++ MCMC step function (handles both standard and adaptive)
 async function mcmcStepCPPAdaptive(chainId, currentParams, currentLogPost) {
     if (!mcmcModule || !mcmcSamplers[chainId] || !mcmcAdaptiveData[chainId]) {
         throw new Error('C++ MCMC module not initialized');
@@ -531,43 +536,70 @@ async function mcmcStepCPPAdaptive(chainId, currentParams, currentLogPost) {
             const initial_infected_pct = parseFloat(document.getElementById('initial_infected').value);
         const time_period = parseInt(document.getElementById('time_period').value);
         
-            // Call C++ adaptive MCMC step
-            const success = mcmcModule.ccall('mcmc_step_adaptive', 'number', [
-                'number', 'number', 'number', 'number', 'number', 'number',
-                'number', 'number', 'number', 'number', 'number', 'number',
-                'number', 'number', 'number', 'number', 'number', 'number',
-                'number', 'number', 'number', 'number', 'number', 'number',
-                'number', 'number', 'number', 'number', 'number'
-            ], [
-                mcmcSamplers[chainId], mcmcAdaptiveData[chainId],
-                currentParams.beta, currentParams.gamma, currentParams.sigma,
-                currentLogPost,
-                obsTimesPtr, obsInfectedPtr, nObs,
-                0.7, 0.3,  // beta prior mean, std
-                0.2, 0.1,  // gamma prior mean, std  
-                2.0, 1.0,  // sigma prior a, b
-                initial_infected_pct, time_period,
-            newBetaPtr, newGammaPtr, newSigmaPtr, newLogPostPtr, acceptedPtr,
-                usedAdaptivePtr, acceptanceRatePtr, scalingFactorPtr,
-            predTimesPtr, predInfectedPtr, predLengthPtr
-        ]);
+            console.log(`[MCMC] Chain ${chainId} using ${mcmcAlgorithm} algorithm`);
+            let success;
+            
+            if (mcmcAlgorithm === 'adaptive') {
+                // Call adaptive MCMC step function
+                success = mcmcModule.ccall('mcmc_step_adaptive', 'number', [
+                    'number', 'number', 'number', 'number', 'number', 'number',
+                    'number', 'number', 'number', 'number', 'number', 'number',
+                    'number', 'number', 'number', 'number', 'number', 'number',
+                    'number', 'number', 'number', 'number', 'number', 'number',
+                    'number', 'number', 'number', 'number', 'number'
+                ], [
+                    mcmcSamplers[chainId], mcmcAdaptiveData[chainId],
+                    currentParams.beta, currentParams.gamma, currentParams.sigma,
+                    currentLogPost,
+                    obsTimesPtr, obsInfectedPtr, nObs,
+                    0.7, 0.3,  // beta prior mean, std
+                    0.2, 0.1,  // gamma prior mean, std  
+                    2.0, 1.0,  // sigma prior a, b
+                    initial_infected_pct, time_period,
+                    newBetaPtr, newGammaPtr, newSigmaPtr, newLogPostPtr, acceptedPtr,
+                    usedAdaptivePtr, acceptanceRatePtr, scalingFactorPtr,
+                    predTimesPtr, predInfectedPtr, predLengthPtr
+                ]);
+            } else {
+                // Call standard MCMC step function with fixed proposal standard deviations
+                success = mcmcModule.ccall('mcmc_step', 'number', [
+                    'number', 'number', 'number', 'number', 'number',
+                    'number', 'number', 'number', 'number', 'number',
+                    'number', 'number', 'number', 'number', 'number', 
+                    'number', 'number', 'number', 'number', 'number',
+                    'number', 'number', 'number', 'number', 'number',
+                    'number', 'number', 'number'
+                ], [
+                    mcmcSamplers[chainId],
+                    currentParams.beta, currentParams.gamma, currentParams.sigma,
+                    currentLogPost,
+                    obsTimesPtr, obsInfectedPtr, nObs,
+                    0.7, 0.3,  // beta prior mean, std
+                    0.2, 0.1,  // gamma prior mean, std  
+                    2.0, 1.0,  // sigma prior a, b
+                    0.02, 0.01, 0.005,  // beta, gamma, sigma proposal standard deviations
+                    initial_infected_pct, time_period,
+                    newBetaPtr, newGammaPtr, newSigmaPtr, newLogPostPtr, acceptedPtr,
+                    predTimesPtr, predInfectedPtr, predLengthPtr
+                ]);
+            }
         
         if (!success) {
-                throw new Error('C++ adaptive MCMC step failed');
+                throw new Error(`C++ ${mcmcAlgorithm} MCMC step failed`);
         }
         
-        // Read results
+            // Read results based on algorithm
             const result = {
                 params: {
-            beta: mcmcModule.getValue(newBetaPtr, 'double'),
-            gamma: mcmcModule.getValue(newGammaPtr, 'double'),
-            sigma: mcmcModule.getValue(newSigmaPtr, 'double')
+                    beta: mcmcModule.getValue(newBetaPtr, 'double'),
+                    gamma: mcmcModule.getValue(newGammaPtr, 'double'),
+                    sigma: mcmcModule.getValue(newSigmaPtr, 'double')
                 },
                 log_posterior: mcmcModule.getValue(newLogPostPtr, 'double'),
                 accepted: mcmcModule.getValue(acceptedPtr, 'i32') === 1,
-                used_adaptive: mcmcModule.getValue(usedAdaptivePtr, 'i32') === 1,
-                acceptance_rate: mcmcModule.getValue(acceptanceRatePtr, 'double'),
-                scaling_factor: mcmcModule.getValue(scalingFactorPtr, 'double')
+                used_adaptive: mcmcAlgorithm === 'adaptive' ? mcmcModule.getValue(usedAdaptivePtr, 'i32') === 1 : false,
+                acceptance_rate: mcmcAlgorithm === 'adaptive' ? mcmcModule.getValue(acceptanceRatePtr, 'double') : 0.0,
+                scaling_factor: mcmcAlgorithm === 'adaptive' ? mcmcModule.getValue(scalingFactorPtr, 'double') : 1.0
             };
             
             return result;
@@ -617,14 +649,18 @@ function updateMCMCDisplays(step, maxSteps) {
         document.getElementById('current-loglik').textContent = mcmcData.bestLogPost.toFixed(2);
     }
     
-    // Show adaptive status
+    // Show algorithm status
     const adaptiveElement = document.getElementById('cov-status');
     if (adaptiveElement) {
-        if (step > MCMC_PARAMS.adaptation_start) {
-            adaptiveElement.innerHTML = `Active: 4/4 chains<br>Adaptive covariance + Robbins-Monro scaling`;
-                } else {
-            const stepsUntil = MCMC_PARAMS.adaptation_start - step;
-            adaptiveElement.innerHTML = `Inactive<br>${stepsUntil} steps until adaptive`;
+        if (mcmcAlgorithm === 'adaptive') {
+            if (step > MCMC_PARAMS.adaptation_start) {
+                adaptiveElement.innerHTML = `Active: 4/4 chains<br>Adaptive covariance + Robbins-Monro scaling`;
+            } else {
+                const stepsUntil = MCMC_PARAMS.adaptation_start - step;
+                adaptiveElement.innerHTML = `Inactive<br>${stepsUntil} steps until adaptive`;
+            }
+        } else {
+            adaptiveElement.innerHTML = `Standard M-H<br>Fixed proposal covariance`;
         }
     }
 }
@@ -632,84 +668,126 @@ function updateMCMCDisplays(step, maxSteps) {
 // Plot MCMC results showing original vs fitted
 function plotMCMCResults(originalData, fittedData) {
     console.log('[MCMC] plotMCMCResults called with:', {
+        isCustomData: isUsingCustomData,
         originalDataLength: originalData?.time?.length || 0,
         fittedDataLength: fittedData?.time?.length || 0,
         originalSample: originalData?.I?.slice(0, 3),
         fittedSample: fittedData?.I?.slice(0, 3)
     });
     
-    if (!originalData || !fittedData || !originalData.time || !fittedData.time) {
-        console.error('[MCMC] Invalid data passed to plotMCMCResults');
+    let traces = [];
+    
+    if (isUsingCustomData && customData) {
+        // For custom data, show the custom data and model fit (if available)
+        traces.push({
+            x: customData.time,
+            y: customData.incidence,
+            type: 'scatter',
+            mode: 'lines+markers',
+            line: { color: '#e74c3c', width: 3 },
+            marker: { color: '#e74c3c', size: 6 },
+            name: 'Custom Data'
+        });
+        
+        // If we have a fitted model for the custom data time points, show it
+        if (fittedData && fittedData.time && fittedData.I) {
+            traces.push({
+                x: fittedData.time,
+                y: fittedData.I,
+                type: 'scatter',
+                mode: 'lines',
+                line: { color: '#9b59b6', width: 2, dash: 'dash' },
+                name: 'MCMC Model Fit'
+            });
+        }
+        
+        // Add observed data points (which are the same as custom data)
+        if (observedData) {
+            traces.push({
+                x: observedData.time,
+                y: observedData.I_observed,
+                type: 'scatter',
+                mode: 'markers',
+                marker: { color: '#f39c12', size: 8, symbol: 'circle-open' },
+                name: 'Data Points'
+            });
+        }
+        
+    } else {
+        // Original behavior for simulated data
+        if (!originalData || !fittedData || !originalData.time || !fittedData.time) {
+            console.error('[MCMC] Invalid data passed to plotMCMCResults');
             return;
         }
         
-    const traces = [
-        {
-            x: originalData.time,
-            y: originalData.S,
+        traces = [
+            {
+                x: originalData.time,
+                y: originalData.S,
                 type: 'scatter',
                 mode: 'lines',
-            line: { color: '#3498db', width: 2, dash: 'dash' },
-            name: 'True Susceptible'
-        },
-        {
-            x: originalData.time,
-            y: originalData.I,
+                line: { color: '#3498db', width: 2, dash: 'dash' },
+                name: 'True Susceptible'
+            },
+            {
+                x: originalData.time,
+                y: originalData.I,
                 type: 'scatter',
                 mode: 'lines',
-            line: { color: '#e74c3c', width: 2, dash: 'dash' },
-            name: 'True Infected'
-        },
-        {
-            x: originalData.time,
-            y: originalData.R,
+                line: { color: '#e74c3c', width: 2, dash: 'dash' },
+                name: 'True Infected'
+            },
+            {
+                x: originalData.time,
+                y: originalData.R,
                 type: 'scatter',
                 mode: 'lines',
-            line: { color: '#27ae60', width: 2, dash: 'dash' },
-            name: 'True Recovered'
-        },
-        {
-            x: fittedData.time,
-            y: fittedData.S,
+                line: { color: '#27ae60', width: 2, dash: 'dash' },
+                name: 'True Recovered'
+            },
+            {
+                x: fittedData.time,
+                y: fittedData.S,
                 type: 'scatter',
                 mode: 'lines',
-            line: { color: '#3498db', width: 3 },
-            name: 'Fitted Susceptible'
-        },
-        {
-            x: fittedData.time,
-            y: fittedData.I,
+                line: { color: '#3498db', width: 3 },
+                name: 'Fitted Susceptible'
+            },
+            {
+                x: fittedData.time,
+                y: fittedData.I,
                 type: 'scatter',
                 mode: 'lines',
-            line: { color: '#e74c3c', width: 3 },
-            name: 'Fitted Infected'
-        },
-        {
-            x: fittedData.time,
-            y: fittedData.R,
-        type: 'scatter',
-        mode: 'lines',
-            line: { color: '#27ae60', width: 3 },
-            name: 'Fitted Recovered'
-        }
-    ];
-    
-    // Add observed data points
-    if (observedData) {
+                line: { color: '#e74c3c', width: 3 },
+                name: 'Fitted Infected'
+            },
+            {
+                x: fittedData.time,
+                y: fittedData.R,
+                type: 'scatter',
+                mode: 'lines',
+                line: { color: '#27ae60', width: 3 },
+                name: 'Fitted Recovered'
+            }
+        ];
+        
+        // Add observed data points
+        if (observedData) {
             traces.push({
-            x: observedData.time,
-            y: observedData.I_observed,
+                x: observedData.time,
+                y: observedData.I_observed,
                 type: 'scatter',
-            mode: 'markers',
-            marker: { color: '#f39c12', size: 8, symbol: 'circle-open' },
-            name: 'Observed Data'
-        });
+                mode: 'markers',
+                marker: { color: '#f39c12', size: 8, symbol: 'circle-open' },
+                name: 'Observed Data'
+            });
+        }
     }
     
     const layout = {
-        title: 'MCMC Bayesian Fitting - C++ WebAssembly',
-        xaxis: { title: 'Time (days)' },
-        yaxis: { title: 'Percentage of Population' },
+        title: isUsingCustomData ? 'MCMC Fitting - Custom Data' : 'MCMC Bayesian Fitting - C++ WebAssembly',
+        xaxis: { title: isUsingCustomData ? 'Time' : 'Time (days)' },
+        yaxis: { title: isUsingCustomData ? 'Incidence' : 'Percentage of Population' },
         showlegend: true,
         height: 400
     };
@@ -733,21 +811,10 @@ function stopMCMC() {
     console.log('[MCMC] Sampling stopped by user');
 }
 
-// Update R0 display
+// Update R0 display (removed from UI)
 function updateR0Display() {
-    const beta = parseFloat(document.getElementById('beta').value);
-    const gamma = parseFloat(document.getElementById('gamma').value);
-    const r0 = (beta / gamma).toFixed(2);
-    
-    document.getElementById('r0-value').textContent = r0;
-    
-    if (r0 > 1) {
-        document.getElementById('r0-value').style.color = '#e74c3c';
-        document.getElementById('epidemic-status').textContent = 'Epidemic grows';
-    } else {
-        document.getElementById('r0-value').style.color = '#27ae60';  
-        document.getElementById('epidemic-status').textContent = 'Epidemic dies out';
-    }
+    // R0 display removed from interface - function kept for compatibility
+    return;
 }
 
 // Update status message
@@ -781,12 +848,21 @@ function resetModel() {
     document.getElementById('initial_infected-value').textContent = DEFAULT_PARAMS.initial_infected.toFixed(1);
     document.getElementById('time_period-value').textContent = DEFAULT_PARAMS.time_period.toString();
     
-    updateR0Display();
+    // Reset custom data state
+    customData = null;
+    isUsingCustomData = false;
+    updateUploadStatus('');
+    
+    // Clear file input
+    const fileInput = document.getElementById('data-file-input');
+    if (fileInput) {
+        fileInput.value = '';
+    }
     
     // Run simulation with default parameters
     runSimulation();
     
-    console.log('[UI] Model reset to defaults');
+    console.log('[UI] Model reset to defaults (including custom data)');
 }
 
 // Setup event listeners
@@ -815,10 +891,7 @@ function setupEventListeners() {
                 const value = parseFloat(this.value);
                 valueDisplay.textContent = value.toFixed(param.decimals);
                 
-                // Update R0 for relevant parameters
-                if (['beta', 'gamma'].includes(param.id)) {
-                    updateR0Display();
-                }
+                // R0 display removed from interface
                 
                 console.log(`[UI] ${param.id} updated to ${value}`);
             });
@@ -831,8 +904,7 @@ function setupEventListeners() {
         }
     });
     
-    // Initialize R0 display
-    updateR0Display();
+    // R0 display removed from interface
     
     // Add event listener for include burn-in checkbox
     const includeBurninCheckbox = document.getElementById('include-burnin');
@@ -841,6 +913,26 @@ function setupEventListeners() {
             console.log(`[UI] Include burn-in changed to ${this.checked}`);
             await updateMCMCPlots(); // Update plots when burn-in setting changes
         });
+    }
+    
+    // Add event listener for algorithm selection
+    const algorithmSelect = document.getElementById('mcmc_algorithm');
+    if (algorithmSelect) {
+        console.log('[UI] Setting up algorithm dropdown event listener');
+        algorithmSelect.addEventListener('change', function() {
+            mcmcAlgorithm = this.value;
+            console.log(`[UI] MCMC algorithm changed to ${mcmcAlgorithm}`);
+            updateAlgorithmInfo(mcmcAlgorithm);
+            updateAlgorithmStatusDisplay(mcmcAlgorithm);
+        });
+        
+        // Initialize algorithm info with current value
+        mcmcAlgorithm = algorithmSelect.value; // Make sure we get the actual dropdown value
+        updateAlgorithmInfo(mcmcAlgorithm);
+        updateAlgorithmStatusDisplay(mcmcAlgorithm);
+        console.log(`[UI] Algorithm dropdown initialized with: ${mcmcAlgorithm}`);
+    } else {
+        console.warn('[UI] Algorithm dropdown element not found!');
     }
     
     console.log('[UI] ✅ Event listeners setup complete');
@@ -938,50 +1030,64 @@ function plotPosteriors() {
 
 // Plot predictive fit
 async function plotPredictive() {
-    if (!simulationData || !mcmcData.bestParams || !observedData) return;
+    if (!mcmcData.bestParams || !observedData) return;
     
     const traces = [];
     
     try {
-        // Generate prediction with best parameters
-        const predictedData = await runSIRSimulation(
-            mcmcData.bestParams.beta,
-            mcmcData.bestParams.gamma,
-            parseFloat(document.getElementById('initial_infected').value),
-            parseInt(document.getElementById('time_period').value)
-        );
-        
-        // Add fitted infected curve
-        if (predictedData && predictedData.time) {
+        if (isUsingCustomData && customData) {
+            // For custom data, we don't have full SIR simulation - just show fitted line if possible
+            // The MCMC will have fitted parameters to match the incidence data directly
             traces.push({
-                x: predictedData.time,
-                y: predictedData.I,
+                x: customData.time,
+                y: customData.incidence,
                 type: 'scatter',
                 mode: 'lines',
-                name: 'Fitted',
+                name: 'Custom Data',
                 line: { color: '#e74c3c', width: 2 }
             });
+        } else if (simulationData) {
+            // Generate prediction with best parameters for simulated data
+            const predictedData = await runSIRSimulation(
+                mcmcData.bestParams.beta,
+                mcmcData.bestParams.gamma,
+                parseFloat(document.getElementById('initial_infected').value),
+                parseInt(document.getElementById('time_period').value)
+            );
+            
+            // Add fitted infected curve
+            if (predictedData && predictedData.time) {
+                traces.push({
+                    x: predictedData.time,
+                    y: predictedData.I,
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: 'Fitted',
+                    line: { color: '#e74c3c', width: 2 }
+                });
+            }
         }
     } catch (error) {
         console.warn('[MCMC] Could not generate prediction for predictive plot:', error);
     }
     
-    // Add observed data points
+    // Add observed data points (either custom or synthetic)
+    const dataName = isUsingCustomData ? 'Custom Points' : 'Observed';
     traces.push({
         x: observedData.time,
         y: observedData.I_observed,
         type: 'scatter',
         mode: 'markers',
-        name: 'Observed',
+        name: dataName,
         marker: { color: '#f39c12', size: 6, symbol: 'circle-open' }
     });
     
     const layout = {
-        title: 'Predictive Fit vs Data',
-        xaxis: { title: 'Time (days)' },
-        yaxis: { title: '% Infected' },
-            height: 120,
-            margin: { l: 45, r: 30, t: 10, b: 20 },
+        title: isUsingCustomData ? 'Custom Data & MCMC Fit' : 'Predictive Fit vs Data',
+        xaxis: { title: isUsingCustomData ? 'Time' : 'Time (days)' },
+        yaxis: { title: isUsingCustomData ? 'Incidence' : '% Infected' },
+        height: 120,
+        margin: { l: 45, r: 30, t: 10, b: 20 },
         showlegend: true,
         legend: { x: 0.7, y: 0.95, bgcolor: 'rgba(255,255,255,0.8)' }
     };
@@ -1164,10 +1270,271 @@ function cleanup() {
     }
 }
 
+// Handle custom data upload
+function handleDataUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    updateUploadStatus('Reading file...');
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const text = e.target.result;
+            const parsedData = parseCustomData(text);
+            
+            if (parsedData && parsedData.time.length > 0) {
+                customData = parsedData;
+                isUsingCustomData = true;
+                
+                // Plot the custom data
+                plotCustomData(customData);
+                
+                // Use custom data as observed data for MCMC
+                observedData = {
+                    time: [...customData.time],
+                    I_observed: [...customData.incidence]
+                };
+                
+                // Enable MCMC button
+                document.getElementById('mcmc-btn').disabled = false;
+                
+                updateUploadStatus(`✅ Loaded ${customData.time.length} data points`);
+                updateStatus(`Custom data loaded: ${customData.time.length} points, time range [${Math.min(...customData.time).toFixed(1)}, ${Math.max(...customData.time).toFixed(1)}]`);
+                
+                console.log('[DATA] Custom data loaded:', {
+                    points: customData.time.length,
+                    timeRange: [Math.min(...customData.time), Math.max(...customData.time)],
+                    incidenceRange: [Math.min(...customData.incidence), Math.max(...customData.incidence)]
+                });
+                
+            } else {
+                throw new Error('No valid data found');
+            }
+            
+        } catch (error) {
+            console.error('[DATA] Upload error:', error);
+            updateUploadStatus('❌ Upload failed: ' + error.message);
+            customData = null;
+            isUsingCustomData = false;
+        }
+    };
+    
+    reader.onerror = function() {
+        updateUploadStatus('❌ Failed to read file');
+        console.error('[DATA] File read error');
+    };
+    
+    reader.readAsText(file);
+}
+
+// Parse custom data from text (CSV or space-separated)
+function parseCustomData(text) {
+    const lines = text.trim().split('\n');
+    const time = [];
+    const incidence = [];
+    
+    let validRows = 0;
+    let errors = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // Skip empty lines and potential header lines
+        if (!line || line.toLowerCase().includes('time') || line.toLowerCase().includes('incidence')) {
+            continue;
+        }
+        
+        // Try to parse as CSV (comma-separated) or space-separated
+        const parts = line.includes(',') 
+            ? line.split(',').map(p => p.trim()) 
+            : line.split(/\s+/);
+            
+        if (parts.length >= 2) {
+            const timeVal = parseFloat(parts[0]);
+            const incidenceVal = parseFloat(parts[1]);
+            
+            if (!isNaN(timeVal) && !isNaN(incidenceVal) && incidenceVal >= 0) {
+                time.push(timeVal);
+                incidence.push(incidenceVal);
+                validRows++;
+            } else {
+                errors.push(`Line ${i + 1}: Invalid numbers (${parts[0]}, ${parts[1]})`);
+            }
+        } else {
+            errors.push(`Line ${i + 1}: Expected 2 columns, got ${parts.length}`);
+        }
+    }
+    
+    if (validRows < 3) {
+        throw new Error(`Need at least 3 data points, found ${validRows}. Format should be [time, incidence] per line.`);
+    }
+    
+    if (errors.length > 0 && errors.length < 5) {
+        console.warn('[DATA] Parse warnings:', errors);
+    }
+    
+    // Sort by time to ensure proper ordering
+    const sortedData = time.map((t, i) => ({ time: t, incidence: incidence[i] }))
+                          .sort((a, b) => a.time - b.time);
+    
+    return {
+        time: sortedData.map(d => d.time),
+        incidence: sortedData.map(d => d.incidence)
+    };
+}
+
+// Plot custom data
+function plotCustomData(data) {
+    const trace = {
+        x: data.time,
+        y: data.incidence,
+        type: 'scatter',
+        mode: 'lines+markers',
+        line: { color: '#e74c3c', width: 3 },
+        marker: { color: '#e74c3c', size: 6 },
+        name: 'Custom Incidence Data'
+    };
+    
+    const layout = {
+        title: 'Custom Data - Incidence over Time',
+        xaxis: { title: 'Time' },
+        yaxis: { title: 'Incidence' },
+        showlegend: true,
+        height: 400
+    };
+    
+    Plotly.newPlot('plotContainer', [trace], layout, { responsive: true, displayModeBar: false });
+}
+
+// Update upload status display
+function updateUploadStatus(message) {
+    const statusElement = document.getElementById('upload-status');
+    if (statusElement) {
+        statusElement.textContent = message;
+    }
+}
+
+// Update algorithm info display
+function updateAlgorithmInfo(algorithm) {
+    const descriptionElement = document.getElementById('algorithm-description');
+    const referenceElement = document.getElementById('algorithm-reference');
+    
+    if (algorithm === 'adaptive') {
+        descriptionElement.textContent = 'Auto-tuning proposal covariance';
+        referenceElement.textContent = 'Andrieu & Thoms - Algorithm 4';
+        referenceElement.title = 'A tutorial on adaptive MCMC';
+        referenceElement.style.display = 'inline';
+    } else {
+        descriptionElement.textContent = 'Fixed proposal covariance';
+        referenceElement.style.display = 'none';
+    }
+}
+
+// Show algorithm reference modal
+function showAlgorithmReference() {
+    // Only show modal for adaptive algorithm
+    if (mcmcAlgorithm !== 'adaptive') {
+        console.log('[UI] No reference available for standard algorithm');
+        return;
+    }
+    
+    const modal = document.getElementById('referenceModal');
+    const titleElement = document.getElementById('referenceTitle');
+    const bodyElement = document.getElementById('referenceBody');
+        titleElement.textContent = 'Adaptive Metropolis-Hastings Algorithm';
+        bodyElement.innerHTML = `
+            <p><strong>Reference:</strong> Andrieu, C., & Thoms, J. (2008). "A tutorial on adaptive MCMC." <em>Statistics and Computing</em>, 18(4), 343-373.</p>
+            <p><strong>URL:</strong> <a href="https://people.eecs.berkeley.edu/~jordan/sail/readings/andrieu-thoms.pdf" target="_blank" style="color: #3498db;">https://people.eecs.berkeley.edu/~jordan/sail/readings/andrieu-thoms.pdf</a></p>
+            <p><strong>Algorithm:</strong> Algorithm 4 (Adaptive Metropolis)</p>
+            
+            <h4 style="margin-top: 1.5rem; color: #2c3e50;">Algorithm Description:</h4>
+            <p>The Adaptive Metropolis algorithm automatically tunes the proposal covariance matrix during sampling to improve mixing and convergence. Key features:</p>
+            <ul style="margin-left: 1.5rem;">
+                <li><strong>Covariance Adaptation:</strong> Uses empirical covariance from previous samples</li>
+                <li><strong>Robbins-Monro Scaling:</strong> Adjusts proposal scale to target ~23.4% acceptance rate</li>
+                <li><strong>Automatic Tuning:</strong> No manual tuning of proposal distributions required</li>
+                <li><strong>Better Convergence:</strong> Adapts to parameter correlations and scales</li>
+            </ul>
+            
+            <p style="margin-top: 1rem;"><strong>Implementation:</strong> This version uses a 3-phase adaptation:</p>
+            <ul style="margin-left: 1.5rem;">
+                <li>Steps 1-24: Fixed proposals to build sample history</li>
+                <li>Steps 25-99: Robbins-Monro scaling only</li>
+                <li>Steps 100+: Full covariance adaptation + scaling</li>
+            </ul>
+        `;
+    
+    modal.style.display = 'block';
+}
+
+// Hide algorithm reference modal
+function hideAlgorithmReference() {
+    document.getElementById('referenceModal').style.display = 'none';
+}
+
+// Close modal when clicking outside of it
+window.onclick = function(event) {
+    const modal = document.getElementById('referenceModal');
+    if (event.target === modal) {
+        hideAlgorithmReference();
+    }
+}
+
+// Update algorithm status display in diagnostics section
+function updateAlgorithmStatusDisplay(algorithm) {
+    const titleElement = document.getElementById('algorithm-status-title');
+    const detailElement = document.getElementById('algorithm-status-detail');
+    
+    if (algorithm === 'adaptive') {
+        titleElement.textContent = 'Adaptive';
+        titleElement.style.color = '#856404';
+        detailElement.innerHTML = '1-24:Fix<br>25-99:RM<br>100+:Full';
+        detailElement.style.color = '#856404';
+    } else {
+        titleElement.textContent = 'Standard';
+        titleElement.style.color = '#6c757d';
+        detailElement.innerHTML = 'Fixed<br>Covariance<br>Matrix';
+        detailElement.style.color = '#6c757d';
+    }
+}
+
+// Debug function to test algorithm selection
+function testAlgorithmSelection() {
+    const dropdown = document.getElementById('mcmc_algorithm');
+    if (!dropdown) {
+        console.error('[DEBUG] Algorithm dropdown not found!');
+        return;
+    }
+    
+    console.log(`[DEBUG] Current algorithm: ${mcmcAlgorithm}`);
+    console.log(`[DEBUG] Dropdown value: ${dropdown.value}`);
+    console.log(`[DEBUG] Available options:`, Array.from(dropdown.options).map(opt => opt.value));
+    
+    // Test switching
+    if (mcmcAlgorithm === 'adaptive') {
+        console.log('[DEBUG] Switching to standard...');
+        dropdown.value = 'standard';
+        dropdown.dispatchEvent(new Event('change'));
+    } else {
+        console.log('[DEBUG] Switching to adaptive...');  
+        dropdown.value = 'adaptive';
+        dropdown.dispatchEvent(new Event('change'));
+    }
+    
+    setTimeout(() => {
+        console.log(`[DEBUG] After switch - mcmcAlgorithm: ${mcmcAlgorithm}, dropdown: ${dropdown.value}`);
+    }, 100);
+}
+
 // Make functions globally available for HTML onclick handlers
 window.runSimulation = runSimulation;
 window.startMCMC = startMCMC;
 window.stopMCMC = stopMCMC;
+window.handleDataUpload = handleDataUpload;
+window.showAlgorithmReference = showAlgorithmReference;
+window.hideAlgorithmReference = hideAlgorithmReference;
+window.testAlgorithmSelection = testAlgorithmSelection;
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', initApp);

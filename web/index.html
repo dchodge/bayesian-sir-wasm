@@ -143,8 +143,8 @@
         .controls {
             display: grid;
             grid-template-columns: 1fr;
-            gap: 1.2rem;
-            margin-bottom: 1.5rem;
+            gap: 0.8rem;
+            margin-bottom: 1rem;
         }
         
         .control-group {
@@ -153,9 +153,9 @@
         
         .control-label {
             display: block;
-            font-size: 0.8rem;
+            font-size: 0.7rem;
             font-weight: 500;
-            margin-bottom: 0.2rem;
+            margin-bottom: 0.15rem;
             color: #34495e;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -169,13 +169,13 @@
             border-radius: 1px;
             -webkit-appearance: none;
             appearance: none;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.3rem;
         }
         
         .slider::-webkit-slider-thumb {
             -webkit-appearance: none;
-            width: 16px;
-            height: 16px;
+            width: 12px;
+            height: 12px;
             background: #2c3e50;
             border-radius: 50%;
             cursor: pointer;
@@ -188,8 +188,8 @@
         }
         
         .slider::-moz-range-thumb {
-            width: 16px;
-            height: 16px;
+            width: 12px;
+            height: 12px;
             background: #2c3e50;
             border-radius: 50%;
             cursor: pointer;
@@ -198,31 +198,25 @@
         }
         
         .value-display {
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             color: #7f8c8d;
             font-variant-numeric: tabular-nums;
-            margin-top: 0.2rem;
-            padding: 0.2rem 0.4rem;
+            margin-top: 0.1rem;
+            padding: 0.15rem 0.3rem;
             background: #f8f9fa;
             border-radius: 3px;
             font-weight: 600;
         }
         
-        .controls-buttons {
-            display: flex;
-            flex-direction: column;
-            gap: 0.8rem;
-            margin-top: 1.5rem;
-        }
         
         .btn {
             background: transparent;
             border: 1px solid #bdc3c7;
             color: #2c3e50;
-            padding: 0.75rem 1rem;
+            padding: 0.5rem 0.8rem;
             cursor: pointer;
             font-family: inherit;
-            font-size: 0.85rem;
+            font-size: 0.75rem;
             border-radius: 0;
             transition: all 0.2s ease;
             text-transform: uppercase;
@@ -335,9 +329,75 @@
             font-size: 0.9rem;
         }
         
+        /* Data section styling */
+        .data-section {
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 0.8rem;
+            margin-bottom: 0.8rem;
+        }
+        
+        .section-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #34495e;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.6rem;
+            border-bottom: 1px solid #e9ecef;
+            padding-bottom: 0.4rem;
+        }
+        
+        .section-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        
         @media (max-width: 600px) {
             h1 { font-size: 1.8rem; }
             .btn { font-size: 0.8rem; }
+        }
+        
+        /* Reference modal */
+        .reference-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .reference-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border-radius: 8px;
+            width: 80%;
+            max-width: 600px;
+            max-height: 80%;
+            overflow-y: auto;
+            position: relative;
+        }
+        
+        .reference-close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            position: absolute;
+            right: 15px;
+            top: 10px;
+        }
+        
+        .reference-close:hover {
+            color: #000;
         }
     </style>
 </head>
@@ -390,18 +450,28 @@
                             </div>
                         </div>
                         
-                        <div class="r0-display">
-                            <strong>R₀: </strong>
-                            <span id="r0-value" style="font-weight: bold; color: #e74c3c;">3.5</span>
-                            <div style="margin-top: 0.5rem; color: #666; font-size: 0.8rem;">
-                                R₀ = β/γ<br>
-                                <span id="epidemic-status" style="font-weight: bold;">Epidemic grows</span>
+                        
+                        <!-- Simulate Data Section -->
+                        <div class="data-section">
+                            <div class="section-title">Simulate Data</div>
+                            <div class="section-buttons">
+                                <button id="simulate-btn" class="btn">Simulate Data</button>
+                                <button id="reset-btn" class="btn">Reset</button>
                             </div>
                         </div>
                         
-                        <div class="controls-buttons">
-                            <button id="simulate-btn" class="btn">Generate Data</button>
-                            <button id="reset-btn" class="btn">Reset</button>
+                        <!-- Load Custom Data Section -->
+                        <div class="data-section">
+                            <div class="section-title">Load Custom Data</div>
+                            <div class="section-buttons">
+                                <input type="file" id="data-file-input" accept=".csv,.txt" style="display: none;" onchange="handleDataUpload(event)">
+                                <button id="upload-btn" class="btn" onclick="document.getElementById('data-file-input').click()">Upload [time, incidence]</button>
+                            </div>
+                            <div id="upload-status" style="margin-top: 0.5rem; font-size: 0.7rem; text-align: center; color: #7f8c8d; min-height: 1rem;"></div>
+                            <div style="margin-top: 0.5rem; font-size: 0.65rem; color: #95a5a6; text-align: center; line-height: 1.3;">
+                                Format: CSV/TXT with columns<br>[time, incidence] - one row per time point<br>
+                                <a href="sample_data.csv" download style="color: #3498db; text-decoration: underline;">Download sample data</a>
+                            </div>
                         </div>
                     </div>
                     
@@ -422,11 +492,25 @@
                     <!-- MCMC Settings (Compact) -->
                     <div class="mcmc-layout">
                     <!-- MCMC Compact Row: 3 Columns -->
-                    <div class="mcmc-settings-grid" style="display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 0.5rem; margin-bottom: 0.8rem;">
+                    <div class="mcmc-settings-grid" style="display: grid; grid-template-columns: 1fr 1.6fr 1fr; gap: 0.5rem; margin-bottom: 0.8rem;">
                         
                         <!-- Column 1: Settings -->
                         <div style="background: #fff; border: 1px solid #e9ecef; border-radius: 4px; padding: 0.4rem;">
                             <h6 style="margin: 0 0 0.4rem 0; font-size: 0.85rem; font-weight: bold; text-align: center;">Settings</h6>
+                            
+                            <!-- Algorithm Selection -->
+                            <div class="control-group" style="margin-bottom: 0.3rem;">
+                                <label class="control-label" style="font-size: 0.8rem;">Algorithm</label>
+                                <select id="mcmc_algorithm" style="width: 100%; font-size: 0.7rem; padding: 0.2rem; border: 1px solid #bdc3c7; background: #fff; margin-bottom: 0.2rem;">
+                                    <option value="adaptive">Adaptive Metropolis-Hastings</option>
+                                    <option value="standard">Standard Metropolis-Hastings</option>
+                                </select>
+                                <div id="algorithm-info" style="font-size: 0.6rem; color: #7f8c8d; text-align: center; line-height: 1.2;">
+                                    <div id="algorithm-description">Auto-tuning proposal covariance</div>
+                                    <a id="algorithm-reference" href="#" onclick="showAlgorithmReference()" style="color: #3498db; text-decoration: underline; cursor: pointer;">Haario et al. (2001)</a>
+                                </div>
+                            </div>
+                            
                             <div class="control-group" style="margin-bottom: 0.3rem;">
                                 <label class="control-label" style="font-size: 0.8rem;">MCMC Steps</label>
                                 <input type="range" id="mcmc_steps" class="slider" min="500" max="50000" step="500" value="5000" style="height: 6px;">
@@ -495,10 +579,10 @@
                                     </div>
                                 </div>
                                 
-                                <!-- Adaptive -->
+                                <!-- Algorithm Status -->
                                 <div style="text-align: center;">
-                                    <div style="font-size: 0.7rem; font-weight: bold; color: #856404; margin-bottom: 0.15rem;">Adaptive</div>
-                                    <div style="font-size: 0.65rem; color: #856404; line-height: 1.2;">
+                                    <div style="font-size: 0.7rem; font-weight: bold; color: #856404; margin-bottom: 0.15rem;" id="algorithm-status-title">Adaptive</div>
+                                    <div style="font-size: 0.65rem; color: #856404; line-height: 1.2;" id="algorithm-status-detail">
                                         1-24:Fix<br>25-99:RM<br>100+:Full
                                     </div>
                                 </div>
@@ -555,6 +639,17 @@
             <div style="text-align: center; margin-top: 2rem; font-size: 0.75rem; color: #bdc3c7;">
                 <span id="backend-info">Powered by C++ WebAssembly + Plotly.js</span><br>
                 <span id="math-backend" style="color: #95a5a6;">Math engine: Loading...</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Algorithm Reference Modal -->
+    <div id="referenceModal" class="reference-modal">
+        <div class="reference-content">
+            <span class="reference-close" onclick="hideAlgorithmReference()">&times;</span>
+            <div id="referenceTitle" style="font-size: 1.2rem; font-weight: bold; margin-bottom: 1rem; color: #2c3e50;">Algorithm Reference</div>
+            <div id="referenceBody" style="line-height: 1.5; color: #34495e;">
+                <!-- Reference content will be populated by JavaScript -->
             </div>
         </div>
     </div>
