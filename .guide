@@ -1,0 +1,128 @@
+WebAssembly (Wasm) allows you to run C++ (and other languages) code on the web, making it possible to generate and display dynamic figures in a browser. Here’s a step-by-step guide:
+
+1. Write Your C++ Code
+Create your C++ code that generates the figure or computes the data. Here’s an example that calculates data points for a simple plot:
+
+```{cpp}
+
+#include <emscripten.h>
+#include <vector>
+#include <string>
+
+extern "C" {
+    EMSCRIPTEN_KEEPALIVE
+    const char* generateData() {
+        static std::string data = "[";
+        for (int i = 0; i < 10; ++i) {
+            data += std::to_string(i) + ",";
+        }
+        data.pop_back(); // Remove the last comma
+        data += "]";
+        return data.c_str();
+    }
+}
+```
+
+This code exports the generateData function that outputs a JSON-like array.
+
+2. Compile C++ to WebAssembly
+Use emscripten to compile your C++ code into WebAssembly. Install Emscripten first if you haven’t already.
+
+Compile the code with:
+
+```{bash}
+
+emcc src/main.cpp -o build/output.js -s EXPORTED_FUNCTIONS='["_generateSineWave"]' -s EXPORTED_RUNTIME_METHODS='["cwrap"]' -s MODULARIZE=1 -s ENVIRONMENT=web
+
+```
+
+This produces:
+
+output.js: JavaScript wrapper for WebAssembly.
+output.wasm: The WebAssembly binary.
+
+3. Create an HTML Interface
+Create an HTML file to display your figure. Use a library like D3.js, Chart.js, or Plotly for rendering.
+
+Here’s an example using Chart.js:
+
+```{html}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Figure with WebAssembly</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <canvas id="myChart" width="400" height="400"></canvas>
+    <script>
+        // Load the WebAssembly module
+        const wasmModule = require('./output.js');
+        
+        wasmModule().then((module) => {
+            // Call the exported C++ function
+            const data = JSON.parse(module._generateData());
+            
+            // Use Chart.js to render the chart
+            const ctx = document.getElementById('myChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({ length: data.length }, (_, i) => i),
+                    datasets: [{
+                        label: 'Dynamic Data',
+                        data: data,
+                        borderColor: 'blue',
+                        borderWidth: 2,
+                    }]
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+
+```
+
+4. Serve the Files Locally
+You need a web server to serve WebAssembly files due to browser security restrictions.
+
+Use a simple HTTP server like Python’s http.server:
+
+```{bash}
+
+python3 -m http.server
+Then, open your browser and navigate to http://localhost:8000.
+
+# http://localhost:8000/web/index.html
+
+```
+
+5. Run and Debug
+
+When you load the HTML page in your browser, the WebAssembly module will execute the C++ code.
+The dynamic figure will be displayed using the computed data.
+
+Optional Enhancements  d
+
+Interactive UI: Add buttons or inputs in HTML to change parameters for the C++ code and regenerate data.
+Real-Time Updates: Use setInterval or event listeners to update the chart dynamically.
+Data Communication: Use JSON or binary formats for complex data structures.
+This approach combines the computational efficiency of C++ with the interactivity of JavaScript and modern web libraries.
+
+to run we have 
+
+# Configure and build
+emcmake cmake ..
+emmake make
+
+# Navigate to your web directory
+cd build/web
+
+# If you have Python 3:
+python3 -m http.server 8000
+http://localhost:8000/web/index.html
+http://localhost:8080

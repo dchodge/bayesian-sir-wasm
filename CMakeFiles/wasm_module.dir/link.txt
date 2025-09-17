@@ -1,0 +1,1 @@
+/usr/local/Cellar/emscripten/3.1.72/libexec/em++ -O3 -DNDEBUG -s WASM=1 "EXPORTED_RUNTIME_METHODS=['ccall','cwrap']" "EXPORTED_FUNCTIONS=['_malloc','_free']" ALLOW_MEMORY_GROWTH=1 NO_EXIT_RUNTIME=1 BINDINGS=1 MODULARIZE=1 EXPORT_NAME=\"createModule\" --no-entry @CMakeFiles/wasm_module.dir/objects1.rsp -o web/wasm_module.js 

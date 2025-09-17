@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bayesian SIR Model</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #ffffff;
+            font-family: 'Avenir Next', 'Avenir', system-ui, -apple-system, sans-serif;
+            color: #2c3e50;
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1600px;
+            width: 100%;
+        }
+        
+        
+        .main-layout {
+            display: flex;
+            gap: 2rem;
+            align-items: flex-start;
+            margin: 2rem 0;
+        }
+        
+        .controls-panel {
+            flex: 0 0 280px;
+            background: #fff;
+            border-radius: 8px;
+            padding: 1.2rem;
+            border: 1px solid #e9ecef;
+        }
+        
+        .mcmc-layout {
+            display: block;
+            margin-top: 1rem;
+        }
+        
+        /* Responsive MCMC Grid */
+        @media (max-width: 1000px) {
+            /* Stack settings vertically on medium screens */
+            .mcmc-settings-grid {
+                grid-template-columns: 1fr !important;
+                grid-template-rows: repeat(3, auto) !important;
+                gap: 0.4rem !important;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            /* More compact on mobile */
+            .mcmc-settings-grid {
+                gap: 0.3rem !important;
+            }
+        }
+        
+        .mcmc-plots {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto auto;
+            gap: 0.4rem;
+            min-height: 200px;
+        }
+        
+        .plot-card {
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 0.4rem;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .plot-card h4 {
+            margin: 0 0 0.2rem 0;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #495057;
+            text-align: center;
+        }
+        
+        .plot-card .plot-area {
+            flex: 1;
+            min-height: 100px;
+            max-height: 140px;
+        }
+        
+        .plot-container {
+            flex: 1;
+            min-height: 500px;
+        }
+        
+        h1 {
+            font-size: 2rem;
+            font-weight: 200;
+            text-align: center;
+            margin-bottom: 0.3rem;
+            letter-spacing: -0.02em;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #7f8c8d;
+            font-weight: 300;
+            margin-bottom: 1.5rem;
+            font-size: 0.9rem;
+        }
+        
+        .r0-display {
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            font-size: 0.85rem;
+        }
+        
+        /* Responsive design */
+        @media (max-width: 1000px) {
+            .main-layout {
+                flex-direction: column;
+                gap: 1.5rem;
+            }
+            .controls-panel {
+                flex: none;
+            }
+        }
+        
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.2rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .control-group {
+            text-align: center;
+        }
+        
+        .control-label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-bottom: 0.2rem;
+            color: #34495e;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .slider {
+            width: 100%;
+            height: 2px;
+            background: #ecf0f1;
+            outline: none;
+            border-radius: 1px;
+            -webkit-appearance: none;
+            appearance: none;
+            margin-bottom: 0.5rem;
+        }
+        
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #2c3e50;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        
+        .slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            background: #34495e;
+        }
+        
+        .slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #2c3e50;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+            transition: all 0.15s ease;
+        }
+        
+        .value-display {
+            font-size: 0.75rem;
+            color: #7f8c8d;
+            font-variant-numeric: tabular-nums;
+            margin-top: 0.2rem;
+            padding: 0.2rem 0.4rem;
+            background: #f8f9fa;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+        
+        .controls-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 0.8rem;
+            margin-top: 1.5rem;
+        }
+        
+        .btn {
+            background: transparent;
+            border: 1px solid #bdc3c7;
+            color: #2c3e50;
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.85rem;
+            border-radius: 0;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 300;
+            width: 100%;
+        }
+        
+        .btn:hover {
+            background: #2c3e50;
+            color: white;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn:disabled:hover {
+            background: transparent;
+            color: #2c3e50;
+        }
+        
+        .btn.active {
+            background: #2c3e50;
+            color: white;
+        }
+        
+        #plotContainer {
+            height: 400px;
+            width: 100%;
+            margin: 2rem 0;
+            border: 1px solid #ecf0f1;
+        }
+        
+        .loading {
+            text-align: center;
+            color: #7f8c8d;
+            margin: 2rem 0;
+        }
+        
+        /* Minimal Collapsible Section Styles */
+        .section-header {
+            background: #f8f9fa;
+            color: #495057;
+            padding: 0.5rem 0.8rem;
+            cursor: pointer;
+            user-select: none;
+            border: 1px solid #dee2e6;
+            border-radius: 4px 4px 0 0;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.1s ease;
+            margin-bottom: 0;
+        }
+        
+        .section-header:hover {
+            background: #e9ecef;
+        }
+        
+        .section-header.collapsed {
+            border-radius: 4px;
+            margin-bottom: 0.8rem;
+            border: 1px solid #dee2e6;
+        }
+        
+        .section-toggle {
+            font-size: 0.8rem;
+            color: #6c757d;
+            transition: transform 0.2s ease;
+        }
+        
+        .section-toggle.collapsed {
+            transform: rotate(-90deg);
+        }
+        
+        .section-content {
+            display: block;
+            background: #fafafa;
+            border: 1px solid #e9ecef;
+            border-top: none;
+            border-radius: 0 0 12px 12px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+        }
+        
+        .section-content.collapsed {
+            display: none;
+        }
+        
+        .status {
+            text-align: center;
+            font-size: 0.8rem;
+            color: #95a5a6;
+            margin-top: 1rem;
+            font-weight: 300;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .error {
+            background: #fff5f5;
+            border: 1px solid #fed7d7;
+            color: #c53030;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        
+        @media (max-width: 600px) {
+            h1 { font-size: 1.8rem; }
+            .btn { font-size: 0.8rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Bayesian SIR Model</h1>
+<p class="subtitle">High-performance epidemic simulation with Adaptive MCMC using C++ WebAssembly</p>
+        
+        <div id="loading" class="loading">
+            <p id="loading-text">Loading C++ WebAssembly MCMC module...</p>
+            <div style="font-size: 0.8rem; color: #95a5a6; margin-top: 1rem;">
+                High-performance Bayesian SIR model with adaptive MCMC
+            </div>
+        </div>
+        
+        <div id="error-message" class="error" style="display: none;">
+            <strong>Loading Error:</strong> <span id="error-text"></span>
+        </div>
+        
+        <div id="main-content" style="display: none;">
+            <!-- Section 1: SIR Simulation -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('section1')">
+                    <span>Section 1: SIR Simulation & Data Generation</span>
+                    <span class="section-toggle" id="section1-toggle">▼</span>
+                </div>
+                <div class="section-content" id="section1-content">
+                    <div class="main-layout">
+                    <div class="controls-panel">
+    <div class="controls">
+                            <div class="control-group">
+                                <label class="control-label">Transmission Rate (β)</label>
+                                <input type="range" id="beta" class="slider" min="0.1" max="2.0" step="0.05" value="0.7">
+                                <div id="beta-value" class="value-display">0.70</div>
+                            </div>
+                            <div class="control-group">
+                                <label class="control-label">Recovery Rate (γ)</label>
+                                <input type="range" id="gamma" class="slider" min="0.01" max="0.5" step="0.01" value="0.2">
+                                <div id="gamma-value" class="value-display">0.20</div>
+                            </div>
+                            <div class="control-group">
+                                <label class="control-label">Initial Infected (%)</label>
+                                <input type="range" id="initial_infected" class="slider" min="0.01" max="10" step="0.1" value="2">
+                                <div id="initial_infected-value" class="value-display">2.0</div>
+                            </div>
+                            <div class="control-group">
+                                <label class="control-label">Time Period (days)</label>
+                                <input type="range" id="time_period" class="slider" min="50" max="200" step="10" value="100">
+                                <div id="time_period-value" class="value-display">100</div>
+                            </div>
+                        </div>
+                        
+                        <div class="r0-display">
+                            <strong>R₀: </strong>
+                            <span id="r0-value" style="font-weight: bold; color: #e74c3c;">3.5</span>
+                            <div style="margin-top: 0.5rem; color: #666; font-size: 0.8rem;">
+                                R₀ = β/γ<br>
+                                <span id="epidemic-status" style="font-weight: bold;">Epidemic grows</span>
+                            </div>
+                        </div>
+                        
+                        <div class="controls-buttons">
+                            <button id="simulate-btn" class="btn">Generate Data</button>
+                            <button id="reset-btn" class="btn">Reset</button>
+                        </div>
+                    </div>
+                    
+                    <div class="plot-container">
+                        <div id="plotContainer"></div>
+                    </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 2: MCMC Bayesian Fitting -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection('section2')">
+                    <span>Section 2: Real-time MCMC Bayesian Fitting</span>
+                    <span class="section-toggle" id="section2-toggle">▼</span>
+                </div>
+                <div class="section-content" id="section2-content">
+                    <!-- MCMC Settings (Compact) -->
+                    <div class="mcmc-layout">
+                    <!-- MCMC Compact Row: 3 Columns -->
+                    <div class="mcmc-settings-grid" style="display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 0.5rem; margin-bottom: 0.8rem;">
+                        
+                        <!-- Column 1: Settings -->
+                        <div style="background: #fff; border: 1px solid #e9ecef; border-radius: 4px; padding: 0.4rem;">
+                            <h6 style="margin: 0 0 0.4rem 0; font-size: 0.85rem; font-weight: bold; text-align: center;">Settings</h6>
+                            <div class="control-group" style="margin-bottom: 0.3rem;">
+                                <label class="control-label" style="font-size: 0.8rem;">MCMC Steps</label>
+                                <input type="range" id="mcmc_steps" class="slider" min="500" max="50000" step="500" value="5000" style="height: 6px;">
+                                <div id="mcmc_steps-value" class="value-display" style="font-size: 0.75rem;">5000</div>
+                            </div>
+                            <div class="control-group">
+                                <label class="control-label" style="font-size: 0.8rem;">Burn-in</label>
+                                <input type="range" id="burnin" class="slider" min="100" max="1000" step="50" value="500" style="height: 6px;">
+                                <div id="burnin-value" class="value-display" style="font-size: 0.75rem;">500</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Column 2: Progress + Controls -->
+                        <div style="background: #e8f6f3; border: 1px solid #27ae60; border-radius: 4px; padding: 0.35rem;">
+                            <h6 style="margin: 0 0 0.3rem 0; font-size: 0.85rem; font-weight: bold; text-align: center; color: #155724;">⚡ Progress</h6>
+                            
+                            <!-- Progress Bar -->
+                            <div style="margin-bottom: 0.35rem;">
+                                <div id="mcmc-progress" style="font-family: monospace; color: #9b59b6; font-size: 0.7rem; text-align: center; margin-bottom: 0.15rem;">Step 0 / 0 (0%)</div>
+                                <div style="background: #ecf0f1; border-radius: 4px; height: 6px; overflow: hidden;">
+                                    <div id="progress-bar" style="background: linear-gradient(90deg, #9b59b6, #e74c3c); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- Current Stats -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem; font-size: 0.7rem; margin-bottom: 0.35rem;">
+                                <div style="text-align: center;">
+                                    <div style="font-weight: bold; font-size: 0.7rem;">Best Fit</div>
+                                    <div id="current-params" style="font-family: monospace; color: #9b59b6; font-size: 0.65rem;">β:- γ:- σ:-</div>
+                                    <div style="margin-top: 0.15rem;">LL: <span id="current-loglik" style="font-family: monospace; color: #27ae60; font-size: 0.65rem;">-</span></div>
+                                </div>
+                                <div style="text-align: center;">
+                                    <div style="font-weight: bold; font-size: 0.7rem;">Status</div>
+                                    <div style="font-size: 0.65rem;">Acc: <span id="accept-rate" style="font-family: monospace; color: #3498db;">-</span></div>
+                                    <div style="font-size: 0.65rem;">RM: <span id="rm-scaling" style="font-family: monospace; color: #9b59b6;">-</span></div>
+                                    <div style="font-size: 0.65rem;"><span id="cov-status" style="font-family: monospace; color: #e67e22;">-</span></div>
+                                </div>
+                            </div>
+                            
+                            <!-- Controls and Checkbox -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem; align-items: center;">
+                                <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                                    <button id="mcmc-btn" class="btn" style="font-size: 0.75rem; padding: 0.25rem 0.35rem; height: 1.6rem;" onclick="startMCMC()" disabled>Start</button>
+                                    <button id="stop-mcmc-btn" class="btn" style="font-size: 0.75rem; padding: 0.25rem 0.35rem; height: 1.6rem;" onclick="stopMCMC()" disabled>Stop</button>
+                                </div>
+                                <div style="font-size: 0.7rem;">
+                                    <label style="display: flex; align-items: flex-start; cursor: pointer; line-height: 1.2;">
+                                        <input type="checkbox" id="include-burnin" checked style="margin-right: 0.2rem; margin-top: 0.1rem;">
+                                        <span>Burn-in</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Column 3: Combined Theory & Diagnostics -->
+                        <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 0.35rem;">
+                            <h6 style="margin: 0 0 0.3rem 0; font-size: 0.85rem; font-weight: bold; text-align: center; color: #495057;">📊 Theory & Diagnostics</h6>
+                            
+                            <!-- 4-column grid for compact info -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0.25rem; margin-bottom: 0.25rem;">
+                                <!-- Priors -->
+                                <div style="text-align: center;">
+                                    <div style="font-size: 0.7rem; font-weight: bold; color: #666; margin-bottom: 0.15rem;">Priors</div>
+                                    <div style="font-size: 0.65rem; color: #666; line-height: 1.2;">
+                                        β~N(.5,1)<br>γ~N(.2,.5)<br>σ~IG(2,1)
+                                    </div>
+                                </div>
+                                
+                                <!-- Adaptive -->
+                                <div style="text-align: center;">
+                                    <div style="font-size: 0.7rem; font-weight: bold; color: #856404; margin-bottom: 0.15rem;">Adaptive</div>
+                                    <div style="font-size: 0.65rem; color: #856404; line-height: 1.2;">
+                                        1-24:Fix<br>25-99:RM<br>100+:Full
+                                    </div>
+                                </div>
+                                
+                                <!-- R-M Scale -->
+                                <div style="text-align: center;">
+                                    <div style="font-size: 0.7rem; font-weight: bold; color: #155724; margin-bottom: 0.15rem;">R-M Scale</div>
+                                    <div style="font-size: 0.65rem; color: #155724; line-height: 1.2;">
+                                        Target:<br>23.4%<br><span id="rm-status">Wait</span>
+                                    </div>
+                                </div>
+                                
+                                <!-- Convergence -->
+                                <div style="text-align: center;">
+                                    <div style="font-size: 0.7rem; font-weight: bold; color: #e74c3c; margin-bottom: 0.15rem;">R̂ | ESS</div>
+                                    <div style="font-size: 0.6rem; font-family: monospace; line-height: 1.2; color: #e74c3c;">
+                                        <div><span id="rhat-beta">-</span> | <span id="ess-beta">-</span></div>
+                                        <div><span id="rhat-gamma">-</span> | <span id="ess-gamma">-</span></div>
+                                        <div><span id="rhat-sigma">-</span> | <span id="ess-sigma">-</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+
+                    <!-- MCMC Plots -->
+                    <div class="mcmc-plots">
+                        <div class="plot-card">
+                            <h4>Parameter Traces</h4>
+                            <div class="plot-area" id="tracePlot"></div>
+                        </div>
+                        <div class="plot-card">
+                            <h4>Posterior Densities</h4>
+                            <div class="plot-area" id="posteriorPlot"></div>
+                        </div>
+                        <div class="plot-card">
+                            <h4>Predictive Fit vs Data</h4>
+                            <div class="plot-area" id="predictivePlot"></div>
+                        </div>
+                        <div class="plot-card">
+                            <h4>Log-Likelihood Trace</h4>
+                            <div class="plot-area" id="likelihoodPlot"></div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="status" class="status">
+                Ready
+            </div>
+            
+            <div style="text-align: center; margin-top: 2rem; font-size: 0.75rem; color: #bdc3c7;">
+                <span id="backend-info">Powered by C++ WebAssembly + Plotly.js</span><br>
+                <span id="math-backend" style="color: #95a5a6;">Math engine: Loading...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Plotly for visualization (local copy) -->
+    <script src="plotly.min.js" 
+            onload="window.plotlyLoaded = true;"
+            onerror="window.plotlyError = true;"></script>
+    
+    <!-- Load C++ WebAssembly MCMC module (required) -->
+    <script src="mcmc_module.js"></script>
+    
+    <!-- Section Toggle Functionality -->
+    <script>
+        function toggleSection(sectionId) {
+            const content = document.getElementById(sectionId + '-content');
+            const toggle = document.getElementById(sectionId + '-toggle');
+            const header = document.querySelector(`[onclick="toggleSection('${sectionId}')"]`);
+            
+            if (content.classList.contains('collapsed')) {
+                content.classList.remove('collapsed');
+                toggle.classList.remove('collapsed');
+                header.classList.remove('collapsed');
+                toggle.textContent = '▼';
+            } else {
+                content.classList.add('collapsed');
+                toggle.classList.add('collapsed');
+                header.classList.add('collapsed');
+                toggle.textContent = '▶';
+            }
+        }
+    </script>
+    
+    <!-- C++ WebAssembly Application -->
+    <script src="js/webr-app.js"></script>
+</body>
+</html>
