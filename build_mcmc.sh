@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🔥 Building High-Performance C++ MCMC WebAssembly Module..."
+echo "🔥 Building C++ MCMC WebAssembly Module..."
 
 # Check if emscripten is available
 if ! command -v emcc &> /dev/null; then
