@@ -64,6 +64,9 @@ async function initApp() {
         document.getElementById('loading').style.display = 'none';
         document.getElementById('main-content').style.display = 'block';
         
+        // Initialize MCMC button state
+        updateMCMCButtonState();
+        
         updateStatus('✅ C++ WebAssembly MCMC ready!');
         
     } catch (error) {
@@ -261,6 +264,7 @@ async function runSimulation() {
         
         // Enable MCMC button
         document.getElementById('mcmc-btn').disabled = false;
+        updateMCMCButtonState();
         
         updateStatus('Data generated - ready for MCMC fitting');
         
@@ -317,7 +321,13 @@ function plotSIRResults(data, animateToFrame = null) {
 
 // Start MCMC sampling with C++ WebAssembly
 async function startMCMC() {
-    if (mcmcRunning || !observedData) return;
+    if (mcmcRunning) return;
+    
+    // Check if we have data to run MCMC on
+    if (!observedData || !observedData.time || observedData.time.length === 0) {
+        showDataWarning();
+        return;
+    }
     
     mcmcRunning = true;
     document.getElementById('mcmc-btn').disabled = true;
@@ -817,6 +827,78 @@ function updateR0Display() {
     return;
 }
 
+// Update MCMC button state based on data availability
+function updateMCMCButtonState() {
+    const mcmcBtn = document.getElementById('mcmc-btn');
+    const progressElement = document.getElementById('mcmc-progress');
+    
+    if (!mcmcBtn) return;
+    
+    if (!observedData || !observedData.time || observedData.time.length === 0) {
+        // No data available
+        mcmcBtn.disabled = true;
+        mcmcBtn.textContent = 'No Data - Simulate or Upload First';
+        mcmcBtn.style.backgroundColor = '#e74c3c';
+        mcmcBtn.style.color = 'white';
+        mcmcBtn.style.borderColor = '#e74c3c';
+        
+        if (progressElement) {
+            progressElement.innerHTML = '<span style="color: #e74c3c; font-weight: bold;">⚠️ No Data Available</span>';
+        }
+    } else {
+        // Data available
+        mcmcBtn.disabled = false;
+        mcmcBtn.textContent = 'Start';
+        mcmcBtn.style.backgroundColor = '';
+        mcmcBtn.style.color = '';
+        mcmcBtn.style.borderColor = '';
+        
+        if (progressElement) {
+            progressElement.textContent = 'Step 0 / 0 (0%)';
+        }
+    }
+}
+
+// Show data warning when trying to start MCMC without data
+function showDataWarning() {
+    const warningMessage = '⚠️ No data available for MCMC fitting. Please either:\n• Click "Simulate Data" to generate synthetic data, or\n• Upload custom data using the file upload button';
+    
+    // Show warning in status
+    updateStatus(warningMessage);
+    
+    // Show visual warning in the MCMC progress area
+    const progressElement = document.getElementById('mcmc-progress');
+    if (progressElement) {
+        progressElement.innerHTML = '<span style="color: #e74c3c; font-weight: bold;">⚠️ No Data Available</span>';
+    }
+    
+    // Temporarily disable the MCMC button and show why
+    const mcmcBtn = document.getElementById('mcmc-btn');
+    if (mcmcBtn) {
+        mcmcBtn.disabled = true;
+        mcmcBtn.textContent = 'No Data - Simulate or Upload First';
+        mcmcBtn.style.backgroundColor = '#e74c3c';
+        mcmcBtn.style.color = 'white';
+        mcmcBtn.style.borderColor = '#e74c3c';
+    }
+    
+    // Re-enable button after 3 seconds
+    setTimeout(() => {
+        if (mcmcBtn) {
+            mcmcBtn.disabled = false;
+            mcmcBtn.textContent = 'Start';
+            mcmcBtn.style.backgroundColor = '';
+            mcmcBtn.style.color = '';
+            mcmcBtn.style.borderColor = '';
+        }
+        if (progressElement) {
+            progressElement.textContent = 'Step 0 / 0 (0%)';
+        }
+    }, 3000);
+    
+    console.log('[MCMC] Warning: No data available for MCMC fitting');
+}
+
 // Update status message
 function updateStatus(message) {
     const statusElement = document.getElementById('status');
@@ -861,6 +943,9 @@ function resetModel() {
     
     // Run simulation with default parameters
     runSimulation();
+    
+    // Update MCMC button state after reset
+    updateMCMCButtonState();
     
     console.log('[UI] Model reset to defaults (including custom data)');
 }
@@ -967,11 +1052,11 @@ function plotTraces() {
     const layout = {
         title: 'Parameter Traces',
         xaxis: { title: 'MCMC Step' },
-        yaxis: { title: 'Transmission Rate (β)', domain: [0.7, 1] },
-        yaxis2: { title: 'Recovery Rate (γ)', domain: [0.35, 0.65] },
-        yaxis3: { title: 'Noise (σ)', domain: [0, 0.3] },
-            height: 120,
-            margin: { l: 45, r: 30, t: 10, b: 20 },
+        yaxis: { title: 'β (Transmission Rate)', domain: [0.7, 1] },
+        yaxis2: { title: 'γ (Recovery Rate)', domain: [0.35, 0.65] },
+        yaxis3: { title: 'σ (Noise)', domain: [0, 0.3] },
+        height: 250,
+        margin: { l: 50, r: 30, t: 30, b: 30 },
         showlegend: false
     };
     
@@ -1014,14 +1099,14 @@ function plotPosteriors() {
     
     const layout = {
         title: 'Posterior Densities',
-        xaxis: { title: 'Transmission Rate (β)', domain: [0, 0.32] },
-        xaxis2: { title: 'Recovery Rate (γ)', domain: [0.34, 0.66] },
-        xaxis3: { title: 'Noise (σ)', domain: [0.68, 1] },
+        xaxis: { title: 'β (Transmission Rate)', domain: [0, 0.32] },
+        xaxis2: { title: 'γ (Recovery Rate)', domain: [0.34, 0.66] },
+        xaxis3: { title: 'σ (Noise)', domain: [0.68, 1] },
         yaxis: { title: 'Density', domain: [0, 1] },
         yaxis2: { title: '', domain: [0, 1], anchor: 'x2' },
         yaxis3: { title: '', domain: [0, 1], anchor: 'x3' },
-            height: 120,
-            margin: { l: 45, r: 30, t: 10, b: 25 },
+        height: 250,
+        margin: { l: 50, r: 30, t: 30, b: 30 },
         showlegend: false
     };
     
@@ -1086,8 +1171,8 @@ async function plotPredictive() {
         title: isUsingCustomData ? 'Custom Data & MCMC Fit' : 'Predictive Fit vs Data',
         xaxis: { title: isUsingCustomData ? 'Time' : 'Time (days)' },
         yaxis: { title: isUsingCustomData ? 'Incidence' : '% Infected' },
-        height: 120,
-        margin: { l: 45, r: 30, t: 10, b: 20 },
+        height: 250,
+        margin: { l: 50, r: 30, t: 30, b: 30 },
         showlegend: true,
         legend: { x: 0.7, y: 0.95, bgcolor: 'rgba(255,255,255,0.8)' }
     };
@@ -1121,8 +1206,8 @@ function plotLikelihood() {
         title: 'Log-Likelihood Trace',
         xaxis: { title: 'MCMC Step' },
         yaxis: { title: 'Log-Likelihood' },
-            height: 120,
-            margin: { l: 45, r: 30, t: 10, b: 20 },
+        height: 250,
+        margin: { l: 50, r: 30, t: 30, b: 30 },
         showlegend: false
     };
     
@@ -1298,6 +1383,7 @@ function handleDataUpload(event) {
                 
                 // Enable MCMC button
                 document.getElementById('mcmc-btn').disabled = false;
+                updateMCMCButtonState();
                 
                 updateUploadStatus(`✅ Loaded ${customData.time.length} data points`);
                 updateStatus(`Custom data loaded: ${customData.time.length} points, time range [${Math.min(...customData.time).toFixed(1)}, ${Math.max(...customData.time).toFixed(1)}]`);

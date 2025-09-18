@@ -77,17 +77,18 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             grid-template-rows: auto auto;
-            gap: 0.4rem;
-            min-height: 200px;
+            gap: 0.6rem;
+            min-height: 300px;
         }
         
         .plot-card {
             background: #fff;
             border: 1px solid #e9ecef;
             border-radius: 6px;
-            padding: 0.4rem;
+            padding: 0.6rem;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
         }
         
         .plot-card h4 {
@@ -100,8 +101,10 @@
         
         .plot-card .plot-area {
             flex: 1;
-            min-height: 100px;
-            max-height: 140px;
+            min-height: 200px;
+            max-height: 300px;
+            overflow: hidden;
+            position: relative;
         }
         
         .plot-container {
