@@ -2,11 +2,11 @@
 
 High-performance Bayesian SIR epidemic model with real-time adaptive MCMC parameter estimation, compiled from C++ to WebAssembly for near-native browser performance.
 
-[![Build and Deploy](https://github.com/YOUR_USERNAME/sir_bayes/actions/workflows/deploy.yml/badge.svg)](https://github.com/YOUR_USERNAME/sir_bayes/actions/workflows/deploy.yml)
+[![Build and Deploy](https://github.com/dchodge/bayesian-sir-wasm/actions/workflows/deploy.yml/badge.svg)](https://github.com/dchodge/bayesian-sir-wasm/actions/workflows/deploy.yml)
 
 ## 🚀 Live Demo
 
-**[Try the application here →](https://YOUR_USERNAME.github.io/sir_bayes/)**
+**[Try the application here →](https://dchodge.github.io/bayesian-sir-wasm/)**
 
 ## Overview
 
