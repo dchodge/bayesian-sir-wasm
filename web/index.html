@@ -649,6 +649,31 @@
                             <div class="plot-area" id="likelihoodPlot"></div>
                         </div>
                     </div>
+                    
+                    <!-- Download Controls -->
+                    <div style="margin-top: 1rem; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 0.8rem;">
+                        <h6 style="margin: 0 0 0.6rem 0; font-size: 0.85rem; font-weight: bold; text-align: center; color: #495057;">📥 Download Posterior Samples</h6>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; align-items: end;">
+                            <!-- Thinning Control -->
+                            <div>
+                                <label style="display: block; font-size: 0.7rem; font-weight: 500; margin-bottom: 0.3rem; color: #34495e;">Thinning Factor</label>
+                                <input type="range" id="thinning-factor" class="slider" min="10" max="100" step="10" value="10" style="height: 4px; margin-bottom: 0.2rem;">
+                                <div id="thinning-factor-value" class="value-display" style="font-size: 0.7rem; text-align: center;">10</div>
+                                <div style="font-size: 0.6rem; color: #6c757d; text-align: center; margin-top: 0.2rem;">Higher = smaller file</div>
+                            </div>
+                            
+                            <!-- Download Button -->
+                            <div>
+                                <button id="download-posteriors-btn" class="btn" style="font-size: 0.75rem; padding: 0.4rem 0.6rem; height: 2.2rem; background: #28a745; color: white; border-color: #28a745;" onclick="downloadPosteriors()" disabled>
+                                    📊 Download CSV
+                                </button>
+                                <div style="font-size: 0.6rem; color: #6c757d; text-align: center; margin-top: 0.3rem;">β, γ, σ samples</div>
+                            </div>
+                        </div>
+                        
+                        <div id="download-status" style="margin-top: 0.5rem; font-size: 0.7rem; text-align: center; color: #6c757d; min-height: 1rem;"></div>
+                    </div>
                     </div>
                 </div>
             </div>

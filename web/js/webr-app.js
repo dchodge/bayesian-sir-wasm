@@ -504,6 +504,9 @@ async function runMCMCLoop(initialParams, maxSteps, burnin) {
     
     // Final plot update
     await updateMCMCPlots();
+    
+    // Update download button state
+    updateDownloadButtonState();
     }
 }
 
@@ -1018,6 +1021,21 @@ function setupEventListeners() {
         console.log(`[UI] Algorithm dropdown initialized with: ${mcmcAlgorithm}`);
     } else {
         console.warn('[UI] Algorithm dropdown element not found!');
+    }
+    
+    // Add event listener for thinning factor slider
+    const thinningSlider = document.getElementById('thinning-factor');
+    const thinningValueDisplay = document.getElementById('thinning-factor-value');
+    if (thinningSlider && thinningValueDisplay) {
+        thinningSlider.addEventListener('input', function() {
+            const value = parseInt(this.value);
+            thinningValueDisplay.textContent = value;
+            console.log(`[UI] Thinning factor updated to ${value}`);
+        });
+        
+        // Initialize value display
+        const initialValue = parseInt(thinningSlider.value);
+        thinningValueDisplay.textContent = initialValue;
     }
     
     console.log('[UI] ✅ Event listeners setup complete');
@@ -1567,6 +1585,94 @@ window.onclick = function(event) {
     }
 }
 
+// Download posterior samples as CSV
+function downloadPosteriors() {
+    if (!mcmcData || !mcmcData.chains || mcmcData.chains.length === 0) {
+        updateDownloadStatus('❌ No MCMC data available. Run MCMC first.');
+        return;
+    }
+    
+    const thinningFactor = parseInt(document.getElementById('thinning-factor').value);
+    const includeBurnin = document.getElementById('include-burnin')?.checked !== false;
+    const burnin = includeBurnin ? 0 : parseInt(document.getElementById('burnin').value || 500);
+    
+    // Collect all samples from all chains
+    const allSamples = [];
+    const chainLabels = ['Chain_1', 'Chain_2', 'Chain_3', 'Chain_4'];
+    
+    mcmcData.chains.forEach((chain, chainIndex) => {
+        if (chain.traces.beta && chain.traces.beta.length > burnin) {
+            const betaData = chain.traces.beta.slice(burnin);
+            const gammaData = chain.traces.gamma.slice(burnin);
+            const sigmaData = chain.traces.sigma.slice(burnin);
+            
+            // Apply thinning
+            for (let i = 0; i < betaData.length; i += thinningFactor) {
+                allSamples.push({
+                    chain: chainLabels[chainIndex],
+                    iteration: i + burnin,
+                    beta: betaData[i],
+                    gamma: gammaData[i],
+                    sigma: sigmaData[i]
+                });
+            }
+        }
+    });
+    
+    if (allSamples.length === 0) {
+        updateDownloadStatus('❌ No samples available. Check burn-in settings.');
+        return;
+    }
+    
+    // Create CSV content
+    const csvHeader = 'chain,iteration,beta,gamma,sigma\n';
+    const csvRows = allSamples.map(sample => 
+        `${sample.chain},${sample.iteration},${sample.beta.toFixed(6)},${sample.gamma.toFixed(6)},${sample.sigma.toFixed(6)}`
+    ).join('\n');
+    const csvContent = csvHeader + csvRows;
+    
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `posterior_samples_thin${thinningFactor}_${new Date().toISOString().slice(0,10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    updateDownloadStatus(`✅ Downloaded ${allSamples.length} samples (thinning: ${thinningFactor}x)`);
+    console.log(`[DOWNLOAD] Exported ${allSamples.length} posterior samples with thinning factor ${thinningFactor}`);
+}
+
+// Update download status message
+function updateDownloadStatus(message) {
+    const statusElement = document.getElementById('download-status');
+    if (statusElement) {
+        statusElement.textContent = message;
+    }
+}
+
+// Update download button state based on MCMC data availability
+function updateDownloadButtonState() {
+    const downloadBtn = document.getElementById('download-posteriors-btn');
+    if (!downloadBtn) return;
+    
+    if (!mcmcData || !mcmcData.chains || mcmcData.chains.length === 0 || 
+        !mcmcData.chains[0].traces.beta || mcmcData.chains[0].traces.beta.length === 0) {
+        downloadBtn.disabled = true;
+        downloadBtn.textContent = '📊 No Data';
+        downloadBtn.style.backgroundColor = '#6c757d';
+        downloadBtn.style.borderColor = '#6c757d';
+    } else {
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = '📊 Download CSV';
+        downloadBtn.style.backgroundColor = '#28a745';
+        downloadBtn.style.borderColor = '#28a745';
+    }
+}
+
 // Update algorithm status display in diagnostics section
 function updateAlgorithmStatusDisplay(algorithm) {
     const titleElement = document.getElementById('algorithm-status-title');
@@ -1621,6 +1727,7 @@ window.handleDataUpload = handleDataUpload;
 window.showAlgorithmReference = showAlgorithmReference;
 window.hideAlgorithmReference = hideAlgorithmReference;
 window.testAlgorithmSelection = testAlgorithmSelection;
+window.downloadPosteriors = downloadPosteriors;
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', initApp);
