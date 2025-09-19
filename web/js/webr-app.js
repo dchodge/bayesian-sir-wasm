@@ -67,6 +67,9 @@ async function initApp() {
         // Initialize MCMC button state
         updateMCMCButtonState();
         
+        // Initialize intervention button state
+        updateInterventionButtonState();
+        
         updateStatus('✅ C++ WebAssembly MCMC ready!');
         
     } catch (error) {
@@ -142,7 +145,8 @@ async function setupInitialSIRPlot() {
             DEFAULT_PARAMS.beta, 
             DEFAULT_PARAMS.gamma,
             DEFAULT_PARAMS.initial_infected,
-            DEFAULT_PARAMS.time_period
+            DEFAULT_PARAMS.time_period,
+            1000 // Default population size
         );
         
         simulationData = data;
@@ -252,9 +256,10 @@ async function runSimulation() {
         const gamma = parseFloat(document.getElementById('gamma').value);
         const initial_infected = parseFloat(document.getElementById('initial_infected').value);
         const time_period = parseInt(document.getElementById('time_period').value);
+        const population_size = parseInt(document.getElementById('population_size').value);
         
         // Run the SIR simulation using C++ WASM
-        simulationData = await runSIRSimulation(beta, gamma, initial_infected, time_period);
+        simulationData = await runSIRSimulation(beta, gamma, initial_infected, time_period, population_size);
         
         // Plot the results
         plotSIRResults(simulationData);
@@ -365,6 +370,12 @@ async function startMCMC() {
     document.getElementById('accept-rate').textContent = '-';
     document.getElementById('current-params').textContent = 'β:- γ:- σ:-';
     
+    // Initialize convergence status
+    const indicatorElement = document.getElementById('convergence-indicator');
+    if (indicatorElement) {
+        indicatorElement.innerHTML = '⏳ <span style="color: #6c757d;">Running...</span>';
+    }
+    
     updateStatus('Starting MCMC sampling with C++ WebAssembly...');
     
     try {
@@ -470,7 +481,8 @@ async function runMCMCLoop(initialParams, maxSteps, burnin) {
                             stepBestParams.beta,
                             stepBestParams.gamma,
                             parseFloat(document.getElementById('initial_infected').value),
-                            parseInt(document.getElementById('time_period').value)
+                            parseInt(document.getElementById('time_period').value),
+                            parseInt(document.getElementById('population_size').value)
                         );
                         
                         if (predictedData && predictedData.time && predictedData.time.length > 0) {
@@ -505,8 +517,14 @@ async function runMCMCLoop(initialParams, maxSteps, burnin) {
     // Final plot update
     await updateMCMCPlots();
     
+    // Final convergence check
+    updateConvergenceDiagnostics();
+    
     // Update download button state
     updateDownloadButtonState();
+    
+    // Update intervention button state
+    updateInterventionButtonState();
     }
 }
 
@@ -926,12 +944,14 @@ function resetModel() {
     document.getElementById('gamma').value = DEFAULT_PARAMS.gamma;
     document.getElementById('initial_infected').value = DEFAULT_PARAMS.initial_infected;
     document.getElementById('time_period').value = DEFAULT_PARAMS.time_period;
+    document.getElementById('population_size').value = 1000;
     
     // Update displays
     document.getElementById('beta-value').textContent = DEFAULT_PARAMS.beta.toFixed(2);
     document.getElementById('gamma-value').textContent = DEFAULT_PARAMS.gamma.toFixed(2);
     document.getElementById('initial_infected-value').textContent = DEFAULT_PARAMS.initial_infected.toFixed(1);
     document.getElementById('time_period-value').textContent = DEFAULT_PARAMS.time_period.toString();
+    document.getElementById('population_size-value').textContent = '1000';
     
     // Reset custom data state
     customData = null;
@@ -966,6 +986,7 @@ function setupEventListeners() {
         { id: 'gamma', decimals: 2 },
         { id: 'initial_infected', decimals: 1 },
         { id: 'time_period', decimals: 0 },
+        { id: 'population_size', decimals: 0 },
         { id: 'mcmc_steps', decimals: 0 },
         { id: 'burnin', decimals: 0 }
     ];
@@ -1037,6 +1058,87 @@ function setupEventListeners() {
         const initialValue = parseInt(thinningSlider.value);
         thinningValueDisplay.textContent = initialValue;
     }
+    
+    // Add event listeners for intervention controls
+    const interventionSliders = [
+        { id: 'vaccine_coverage', suffix: '%' },
+        { id: 'vaccine_start', suffix: '' },
+        { id: 'vaccine_end', suffix: '' }
+    ];
+    
+    interventionSliders.forEach(param => {
+        const slider = document.getElementById(param.id);
+        const valueDisplay = document.getElementById(param.id + '-value');
+        
+        if (slider && valueDisplay) {
+            slider.addEventListener('input', function() {
+                const value = parseFloat(this.value);
+                valueDisplay.textContent = value + param.suffix;
+                console.log(`[UI] ${param.id} updated to ${value}`);
+                
+                // Update uptake plot for coverage, start, and end time changes
+                if (['vaccine_coverage', 'vaccine_start', 'vaccine_end'].includes(param.id)) {
+                    plotVaccinationUptake();
+                }
+            });
+            
+            // Initialize value display
+            const initialValue = parseFloat(slider.value);
+            valueDisplay.textContent = initialValue + param.suffix;
+        }
+    });
+    
+    // Add event listeners for waning controls
+    const waningSliders = [
+        { id: 'waning_protection', suffix: '%', decimals: 0 },
+        { id: 'waning_rate', suffix: '', decimals: 3 }
+    ];
+    
+    waningSliders.forEach(param => {
+        const slider = document.getElementById(param.id);
+        const valueDisplay = document.getElementById(param.id + '-value');
+        
+        if (slider && valueDisplay) {
+            slider.addEventListener('input', function() {
+                const value = parseFloat(this.value);
+                // Special handling for waning rate to show 0.000 when zero
+                if (param.id === 'waning_rate' && value === 0) {
+                    valueDisplay.textContent = '0.000';
+                } else {
+                    valueDisplay.textContent = value.toFixed(param.decimals) + param.suffix;
+                }
+                console.log(`[UI] ${param.id} updated to ${value}`);
+                
+                // Update waning plot
+                plotWaningCurve();
+            });
+            
+            // Initialize value display
+            const initialValue = parseFloat(slider.value);
+            if (param.id === 'waning_rate' && initialValue === 0) {
+                valueDisplay.textContent = '0.000';
+            } else {
+                valueDisplay.textContent = initialValue.toFixed(param.decimals) + param.suffix;
+            }
+        }
+    });
+    
+    // Add event listener for waning distribution selection
+    const waningDistributionSelect = document.getElementById('waning_distribution');
+    if (waningDistributionSelect) {
+        waningDistributionSelect.addEventListener('change', function() {
+            console.log(`[UI] Waning distribution changed to ${this.value}`);
+            updateWaningDistributionInfo();
+            plotWaningCurve();
+        });
+        
+        // Initialize distribution info
+        updateWaningDistributionInfo();
+    }
+    
+    // Initialize plots
+    plotVaccinationUptake();
+    plotWaningCurve();
     
     console.log('[UI] ✅ Event listeners setup complete');
 }
@@ -1155,7 +1257,8 @@ async function plotPredictive() {
                 mcmcData.bestParams.beta,
                 mcmcData.bestParams.gamma,
                 parseFloat(document.getElementById('initial_infected').value),
-                parseInt(document.getElementById('time_period').value)
+                parseInt(document.getElementById('time_period').value),
+                parseInt(document.getElementById('population_size').value)
             );
             
             // Add fitted infected curve
@@ -1317,6 +1420,9 @@ function updateConvergenceDiagnostics() {
     const includeBurnin = document.getElementById('include-burnin')?.checked !== false;
     const burnin = includeBurnin ? 0 : parseInt(document.getElementById('burnin').value || 500);
     
+    let allConverged = true;
+    let anyConverged = false;
+    
     ['beta', 'gamma', 'sigma'].forEach(param => {
         const rhat = calculateRhat(mcmcData.chains, param, burnin);
         const ess = calculateESS(mcmcData.chains, param, burnin);
@@ -1327,8 +1433,17 @@ function updateConvergenceDiagnostics() {
         // Color coding for Rhat (good < 1.1, warning < 1.2, bad >= 1.2)
         let rhatColor = '#27ae60'; // green
         if (!isNaN(rhat)) {
-            if (rhat >= 1.2) rhatColor = '#e74c3c'; // red
-            else if (rhat >= 1.1) rhatColor = '#f39c12'; // orange
+            if (rhat >= 1.2) {
+                rhatColor = '#e74c3c'; // red
+                allConverged = false;
+            } else if (rhat >= 1.1) {
+                rhatColor = '#f39c12'; // orange
+                allConverged = false;
+            } else {
+                anyConverged = true;
+            }
+        } else {
+            allConverged = false;
         }
         
         const rhatElement = document.getElementById(`rhat-${param}`);
@@ -1341,6 +1456,23 @@ function updateConvergenceDiagnostics() {
             essElement.textContent = essStr;
         }
     });
+    
+    // Update convergence status indicator
+    updateConvergenceStatus(allConverged, anyConverged);
+}
+
+// Update convergence status indicator
+function updateConvergenceStatus(allConverged, anyConverged) {
+    const indicatorElement = document.getElementById('convergence-indicator');
+    if (!indicatorElement) return;
+    
+    if (allConverged) {
+        indicatorElement.innerHTML = '✅ <span style="color: #27ae60;">Converged</span>';
+    } else if (anyConverged) {
+        indicatorElement.innerHTML = '⚠️ <span style="color: #f39c12;">Partial</span>';
+    } else {
+        indicatorElement.innerHTML = '❌ <span style="color: #e74c3c;">Not Converged</span>';
+    }
 }
 
 // Update all MCMC plots
@@ -1654,6 +1786,609 @@ function updateDownloadStatus(message) {
     }
 }
 
+// Intervention analysis variables
+let interventionData = null;
+let baselineData = null;
+
+// Waning model functions
+function calculateWaningExponential(time, protection, lossRate) {
+    if (lossRate === 0) {
+        return protection; // No waning if loss rate is zero
+    }
+    return protection * Math.exp(-lossRate * time);
+}
+
+function calculateWaningGamma(time, protection, lossRate, compartments = 2) {
+    if (lossRate === 0) {
+        return protection; // No waning if loss rate is zero
+    }
+    
+    // Gamma distribution with shape parameter = compartments, rate parameter = lossRate * compartments
+    const shape = compartments;
+    const rate = lossRate * compartments;
+    
+    // For gamma distribution, we need to calculate the survival function
+    // P(T > t) = 1 - F(t) where F is the CDF of gamma distribution
+    // Using approximation for gamma CDF
+    const x = rate * time;
+    let sum = 0;
+    let term = 1;
+    
+    for (let k = 0; k < shape; k++) {
+        sum += term;
+        term *= x / (k + 1);
+    }
+    
+    const cdf = 1 - Math.exp(-x) * sum;
+    return protection * (1 - cdf);
+}
+
+function calculateWaningErlang3(time, protection, lossRate) {
+    return calculateWaningGamma(time, protection, lossRate, 3);
+}
+
+function calculateWaningCurve(distribution, protection, lossRate, maxTime = 200) {
+    const timePoints = [];
+    const protectionLevels = [];
+    
+    for (let t = 0; t <= maxTime; t += 2) {
+        timePoints.push(t);
+        
+        let protectionLevel;
+        switch (distribution) {
+            case 'exponential':
+                protectionLevel = calculateWaningExponential(t, protection, lossRate);
+                break;
+            case 'gamma':
+                protectionLevel = calculateWaningGamma(t, protection, lossRate, 2);
+                break;
+            case 'erlang3':
+                protectionLevel = calculateWaningErlang3(t, protection, lossRate);
+                break;
+            default:
+                protectionLevel = calculateWaningExponential(t, protection, lossRate);
+        }
+        
+        protectionLevels.push(protectionLevel);
+    }
+    
+    return { time: timePoints, protection: protectionLevels };
+}
+
+function plotWaningCurve() {
+    const protection = parseFloat(document.getElementById('waning_protection').value) / 100;
+    const lossRate = parseFloat(document.getElementById('waning_rate').value);
+    const distribution = document.getElementById('waning_distribution').value;
+    
+    const waningData = calculateWaningCurve(distribution, protection, lossRate);
+    
+    const trace = {
+        x: waningData.time,
+        y: waningData.protection.map(p => p * 100), // Convert to percentage
+        type: 'scatter',
+        mode: 'lines',
+        line: { color: '#e67e22', width: 2 },
+        name: 'Protection Level',
+        showlegend: false
+    };
+    
+    const layout = {
+        xaxis: { 
+            title: '',
+            range: [0, 200],
+            showgrid: false,
+            showticklabels: true,
+            tickfont: { size: 8 },
+            zeroline: false,
+            automargin: true
+        },
+        yaxis: { 
+            title: '',
+            range: [0, 100],
+            showgrid: false,
+            showticklabels: true,
+            tickfont: { size: 8 },
+            zeroline: false,
+            automargin: true
+        },
+        margin: { l: 30, r: 10, t: 10, b: 30 },
+        height: 60,
+        width: 140,
+        showlegend: false,
+        autosize: true
+    };
+    
+    Plotly.newPlot('waningPlot', [trace], layout, { 
+        responsive: true, 
+        displayModeBar: false,
+        staticPlot: true
+    });
+}
+
+function updateWaningDistributionInfo() {
+    const distribution = document.getElementById('waning_distribution').value;
+    const infoElement = document.getElementById('waning_distribution_info');
+    
+    switch (distribution) {
+        case 'exponential':
+            infoElement.textContent = 'Single compartment';
+            break;
+        case 'gamma':
+            infoElement.textContent = '2 compartments';
+            break;
+        case 'erlang3':
+            infoElement.textContent = '3 compartments';
+            break;
+        default:
+            infoElement.textContent = 'Single compartment';
+    }
+}
+
+// Analyze intervention impact
+async function analyzeIntervention() {
+    if (!mcmcData || !mcmcData.bestParams || !observedData) {
+        updateInterventionStatus('❌ No MCMC data available. Run MCMC first.');
+        return;
+    }
+    
+    try {
+        updateInterventionStatus('🔄 Analyzing intervention impact...');
+        
+        // Get intervention parameters
+        const coverage = parseFloat(document.getElementById('vaccine_coverage').value) / 100;
+        const startTime = parseInt(document.getElementById('vaccine_start').value);
+        const endTime = parseInt(document.getElementById('vaccine_end').value);
+        
+        // Validate parameters
+        if (startTime >= endTime) {
+            updateInterventionStatus('❌ Start time must be before end time');
+            return;
+        }
+        
+        if (endTime > parseInt(document.getElementById('time_period').value)) {
+            updateInterventionStatus('❌ End time exceeds simulation period');
+            return;
+        }
+        
+        // Get MCMC parameters
+        const beta = mcmcData.bestParams.beta;
+        const gamma = mcmcData.bestParams.gamma;
+        const initialInfected = parseFloat(document.getElementById('initial_infected').value);
+        const timePeriod = parseInt(document.getElementById('time_period').value);
+        const populationSize = parseInt(document.getElementById('population_size').value);
+        
+        // Run baseline simulation (no intervention)
+        baselineData = await runSIRSimulation(beta, gamma, initialInfected, timePeriod, populationSize);
+        
+        // Run intervention simulation (with vaccination)
+        interventionData = await runInterventionSimulation(
+            beta, gamma, initialInfected, timePeriod, populationSize,
+            coverage, startTime, endTime
+        );
+        
+        // Calculate impact metrics
+        const impactMetrics = calculateInterventionImpact(baselineData, interventionData, coverage);
+        
+        // Update UI
+        updateInterventionResults(impactMetrics);
+        plotInterventionComparison(baselineData, interventionData, startTime, endTime);
+        
+        // Show results section
+        document.getElementById('intervention-results').style.display = 'block';
+        
+        // Enable download buttons
+        updateInterventionDownloadButtonState();
+        
+        updateInterventionStatus('✅ Intervention analysis complete');
+        
+    } catch (error) {
+        console.error('[INTERVENTION] Analysis error:', error);
+        updateInterventionStatus('❌ Intervention analysis failed');
+    }
+}
+
+// Run intervention simulation with waning
+async function runInterventionSimulation(beta, gamma, initialInfected, timePeriod, populationSize, coverage, startTime, endTime) {
+    // Get waning parameters
+    const waningProtection = parseFloat(document.getElementById('waning_protection').value) / 100;
+    const waningRate = parseFloat(document.getElementById('waning_rate').value);
+    const waningDistribution = document.getElementById('waning_distribution').value;
+    
+    const time = [];
+    const S = [];
+    const I = [];
+    const R = [];
+    const V = []; // Vaccinated compartment
+    
+    const dt = 0.1;
+    const steps = Math.floor(timePeriod / dt);
+    
+    // Initial conditions
+    let s = 1.0 - initialInfected / 100;
+    let i = initialInfected / 100;
+    let r = 0.0;
+    let v = 0.0; // Vaccinated
+    
+    for (let step = 0; step <= steps; step++) {
+        const t = step * dt;
+        time.push(t);
+        
+        // Calculate vaccination rate (linear ramp from start to end time)
+        let vaccinationRate = 0;
+        if (t >= startTime && t <= endTime) {
+            const progress = (t - startTime) / (endTime - startTime);
+            vaccinationRate = (coverage / (endTime - startTime)) * (1 - progress);
+        }
+        
+        // Calculate current protection level based on waning model
+        let currentProtection = 0;
+        if (t > 0) {
+            switch (waningDistribution) {
+                case 'exponential':
+                    currentProtection = calculateWaningExponential(t, waningProtection, waningRate);
+                    break;
+                case 'gamma':
+                    currentProtection = calculateWaningGamma(t, waningProtection, waningRate, 2);
+                    break;
+                case 'erlang3':
+                    currentProtection = calculateWaningErlang3(t, waningProtection, waningRate);
+                    break;
+                default:
+                    currentProtection = calculateWaningExponential(t, waningProtection, waningRate);
+            }
+        }
+        
+        // Calculate waning rate based on distribution
+        let waningToSusceptible = 0;
+        
+        if (waningRate === 0) {
+            // No waning if loss rate is zero
+            waningToSusceptible = 0;
+        } else if (waningDistribution === 'exponential') {
+            // Direct transition: V -> S
+            waningToSusceptible = waningRate;
+        } else if (waningDistribution === 'gamma') {
+            // Gamma distribution with shape parameter = 2
+            waningToSusceptible = waningRate * 2;
+        } else if (waningDistribution === 'erlang3') {
+            // Erlang-3 distribution with shape parameter = 3
+            waningToSusceptible = waningRate * 3;
+        }
+        
+        // SIRS with vaccination and waning dynamics
+        // Vaccinated individuals lose immunity and become susceptible
+        const dsdt = -beta * s * i - vaccinationRate * s + waningToSusceptible * v;
+        const didt = beta * s * i - gamma * i;
+        const drdt = gamma * i;
+        
+        // Vaccination dynamics: V -> S (waning)
+        const dvdt = vaccinationRate * s - waningToSusceptible * v;
+        
+        // Update compartments
+        s = Math.max(0, s + dsdt * dt);
+        i = Math.max(0, i + didt * dt);
+        r = Math.max(0, r + drdt * dt);
+        v = Math.max(0, v + dvdt * dt);
+        
+        // Normalize to ensure S + I + R + V = 1
+        const total = s + i + r + v;
+        s /= total;
+        i /= total;
+        r /= total;
+        v /= total;
+        
+        S.push(s * 100);
+        I.push(i * 100);
+        R.push(r * 100);
+        V.push(v * 100);
+    }
+    
+    return { time, S, I, R, V };
+}
+
+// Calculate intervention impact metrics
+function calculateInterventionImpact(baseline, intervention, coverage) {
+    // Find peak infections
+    const baselinePeak = Math.max(...baseline.I);
+    const interventionPeak = Math.max(...intervention.I);
+    const peakReduction = ((baselinePeak - interventionPeak) / baselinePeak * 100).toFixed(1);
+    
+    // Calculate total cases averted (area under curve difference)
+    let baselineCases = 0;
+    let interventionCases = 0;
+    
+    for (let i = 0; i < baseline.I.length - 1; i++) {
+        const dt = baseline.time[i + 1] - baseline.time[i];
+        baselineCases += baseline.I[i] * dt;
+        interventionCases += intervention.I[i] * dt;
+    }
+    
+    const casesAverted = (baselineCases - interventionCases).toFixed(0);
+    
+    return {
+        peakReduction: peakReduction + '%',
+        casesAverted: casesAverted,
+        coverageAchieved: (coverage * 100).toFixed(0) + '%'
+    };
+}
+
+// Update intervention results display
+function updateInterventionResults(metrics) {
+    document.getElementById('peak-reduction').textContent = metrics.peakReduction;
+    document.getElementById('cases-averted').textContent = metrics.casesAverted;
+    document.getElementById('coverage-achieved').textContent = metrics.coverageAchieved;
+}
+
+// Plot intervention comparison with waning
+function plotInterventionComparison(baseline, intervention, startTime, endTime) {
+    const traces = [
+        // Baseline (no intervention) - Infected only
+        {
+            x: baseline.time,
+            y: baseline.I,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'Infected (No Intervention)',
+            line: { color: '#e74c3c', width: 3, dash: 'solid' },
+            yaxis: 'y'
+        },
+        // Intervention - Infected
+        {
+            x: intervention.time,
+            y: intervention.I,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'Infected (With Vaccination)',
+            line: { color: '#27ae60', width: 3, dash: 'solid' },
+            yaxis: 'y'
+        },
+        // Vaccinated
+        {
+            x: intervention.time,
+            y: intervention.V,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'Vaccinated',
+            line: { color: '#9b59b6', width: 2, dash: 'solid' },
+            yaxis: 'y2'
+        }
+    ];
+    
+    // Add intervention period shading
+    const interventionShading = {
+        x: [startTime, startTime, endTime, endTime],
+        y: [0, 100, 100, 0],
+        type: 'scatter',
+        mode: 'lines',
+        fill: 'tonexty',
+        fillcolor: 'rgba(23, 162, 184, 0.1)',
+        line: { color: 'rgba(23, 162, 184, 0.3)', width: 1 },
+        name: 'Vaccination Period',
+        showlegend: false,
+        yaxis: 'y'
+    };
+    traces.push(interventionShading);
+    
+    const layout = {
+        title: 'Intervention Impact: Infected vs Vaccinated',
+        xaxis: { title: 'Time (days)' },
+        yaxis: { 
+            title: 'Infected (%)', 
+            domain: [0.5, 1],
+            side: 'left'
+        },
+        yaxis2: { 
+            title: 'Vaccinated (%)', 
+            domain: [0, 0.45],
+            side: 'right'
+        },
+        height: 400,
+        margin: { l: 60, r: 60, t: 40, b: 40 },
+        showlegend: true,
+        legend: { x: 0.7, y: 0.95, bgcolor: 'rgba(255,255,255,0.8)' }
+    };
+    
+    Plotly.newPlot('interventionPlot', traces, layout, { responsive: true, displayModeBar: false });
+}
+
+// Plot vaccination uptake over time
+function plotVaccinationUptake() {
+    const coverage = parseFloat(document.getElementById('vaccine_coverage').value) / 100;
+    const startTime = parseInt(document.getElementById('vaccine_start').value);
+    const endTime = parseInt(document.getElementById('vaccine_end').value);
+    
+    // Create time points for the plot
+    const timePoints = [];
+    const uptakePoints = [];
+    
+    for (let t = 0; t <= 200; t += 2) {
+        timePoints.push(t);
+        
+        if (t < startTime) {
+            uptakePoints.push(0);
+        } else if (t >= startTime && t <= endTime) {
+            // Linear ramp from 0 to coverage
+            const progress = (t - startTime) / (endTime - startTime);
+            uptakePoints.push(coverage * progress * 100);
+        } else {
+            // Constant at final coverage
+            uptakePoints.push(coverage * 100);
+        }
+    }
+    
+    const trace = {
+        x: timePoints,
+        y: uptakePoints,
+        type: 'scatter',
+        mode: 'lines',
+        line: { color: '#17a2b8', width: 2 },
+        name: 'Vaccination Uptake',
+        showlegend: false
+    };
+    
+    const layout = {
+        xaxis: { 
+            title: '',
+            range: [0, 200],
+            showgrid: false,
+            showticklabels: true,
+            tickfont: { size: 8 },
+            zeroline: false
+        },
+        yaxis: { 
+            title: '',
+            range: [0, 100],
+            showgrid: false,
+            showticklabels: true,
+            tickfont: { size: 8 },
+            zeroline: false
+        },
+        margin: { l: 20, r: 10, t: 5, b: 20 },
+        height: 60,
+        width: 140,
+        showlegend: false
+    };
+    
+    Plotly.newPlot('uptakePlot', [trace], layout, { 
+        responsive: true, 
+        displayModeBar: false,
+        staticPlot: true
+    });
+}
+
+// Update intervention status
+function updateInterventionStatus(message) {
+    const statusElement = document.getElementById('intervention-status');
+    if (statusElement) {
+        statusElement.textContent = message;
+    }
+}
+
+// Update intervention button state
+function updateInterventionButtonState() {
+    const interventionBtn = document.getElementById('analyze-intervention-btn');
+    if (!interventionBtn) return;
+    
+    if (!mcmcData || !mcmcData.bestParams || !observedData) {
+        interventionBtn.disabled = true;
+        interventionBtn.textContent = '🔬 No MCMC Data';
+        interventionBtn.style.backgroundColor = '#6c757d';
+        interventionBtn.style.borderColor = '#6c757d';
+    } else {
+        interventionBtn.disabled = false;
+        interventionBtn.textContent = '🔬 Analyze Intervention';
+        interventionBtn.style.backgroundColor = '#17a2b8';
+        interventionBtn.style.borderColor = '#17a2b8';
+    }
+    
+    // Update download button states
+    updateInterventionDownloadButtonState();
+}
+
+// Update intervention download button states
+function updateInterventionDownloadButtonState() {
+    const csvBtn = document.getElementById('download-intervention-btn');
+    const plotBtn = document.getElementById('download-intervention-plot-btn');
+    
+    if (!csvBtn || !plotBtn) return;
+    
+    if (!interventionData || !baselineData) {
+        csvBtn.disabled = true;
+        plotBtn.disabled = true;
+        csvBtn.style.backgroundColor = '#6c757d';
+        csvBtn.style.borderColor = '#6c757d';
+        plotBtn.style.backgroundColor = '#6c757d';
+        plotBtn.style.borderColor = '#6c757d';
+    } else {
+        csvBtn.disabled = false;
+        plotBtn.disabled = false;
+        csvBtn.style.backgroundColor = '#17a2b8';
+        csvBtn.style.borderColor = '#17a2b8';
+        plotBtn.style.backgroundColor = '#28a745';
+        plotBtn.style.borderColor = '#28a745';
+    }
+}
+
+// Download intervention data as CSV
+function downloadInterventionData() {
+    if (!interventionData || !baselineData) {
+        updateInterventionDownloadStatus('❌ No intervention data available. Run analysis first.');
+        return;
+    }
+    
+    try {
+        // Prepare CSV data
+        const maxLength = Math.max(baselineData.time.length, interventionData.time.length);
+        const csvRows = [];
+        
+        // Header
+        csvRows.push('time,baseline_infected,intervention_infected,intervention_vaccinated');
+        
+        // Data rows
+        for (let i = 0; i < maxLength; i++) {
+            const time = i < baselineData.time.length ? baselineData.time[i] : 
+                        i < interventionData.time.length ? interventionData.time[i] : i;
+            const baselineInfected = i < baselineData.I.length ? baselineData.I[i] : '';
+            const interventionInfected = i < interventionData.I.length ? interventionData.I[i] : '';
+            const interventionVaccinated = i < interventionData.V.length ? interventionData.V[i] : '';
+            
+            csvRows.push(`${time},${baselineInfected},${interventionInfected},${interventionVaccinated}`);
+        }
+        
+        // Create and download file
+        const csvContent = csvRows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `intervention_analysis_${new Date().toISOString().slice(0,10)}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        updateInterventionDownloadStatus('✅ Intervention data downloaded successfully');
+        console.log('[DOWNLOAD] Exported intervention analysis data');
+        
+    } catch (error) {
+        console.error('[DOWNLOAD] Error exporting intervention data:', error);
+        updateInterventionDownloadStatus('❌ Download failed: ' + error.message);
+    }
+}
+
+// Download intervention plot as PNG
+function downloadInterventionPlot() {
+    if (!interventionData || !baselineData) {
+        updateInterventionDownloadStatus('❌ No intervention data available. Run analysis first.');
+        return;
+    }
+    
+    try {
+        // Use Plotly's download functionality
+        Plotly.download('interventionPlot', 'intervention_analysis_plot.png', {
+            format: 'png',
+            width: 800,
+            height: 600,
+            scale: 2
+        });
+        
+        updateInterventionDownloadStatus('✅ Plot downloaded successfully');
+        console.log('[DOWNLOAD] Exported intervention analysis plot');
+        
+    } catch (error) {
+        console.error('[DOWNLOAD] Error exporting plot:', error);
+        updateInterventionDownloadStatus('❌ Plot download failed: ' + error.message);
+    }
+}
+
+// Update intervention download status
+function updateInterventionDownloadStatus(message) {
+    const statusElement = document.getElementById('intervention-download-status');
+    if (statusElement) {
+        statusElement.textContent = message;
+    }
+}
+
 // Update download button state based on MCMC data availability
 function updateDownloadButtonState() {
     const downloadBtn = document.getElementById('download-posteriors-btn');
@@ -1728,6 +2463,9 @@ window.showAlgorithmReference = showAlgorithmReference;
 window.hideAlgorithmReference = hideAlgorithmReference;
 window.testAlgorithmSelection = testAlgorithmSelection;
 window.downloadPosteriors = downloadPosteriors;
+window.analyzeIntervention = analyzeIntervention;
+window.downloadInterventionData = downloadInterventionData;
+window.downloadInterventionPlot = downloadInterventionPlot;
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', initApp);
