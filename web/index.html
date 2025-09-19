@@ -374,6 +374,89 @@
         @media (max-width: 600px) {
             h1 { font-size: 1.8rem; }
             .btn { font-size: 0.8rem; }
+            
+            /* Section 1 mobile layout */
+            .main-layout {
+                display: flex !important;
+                flex-direction: column !important;
+                grid-template-columns: none !important;
+                gap: 1rem !important;
+            }
+            
+            .data-controls-panel,
+            .controls-panel {
+                width: 100% !important;
+                max-width: none !important;
+            }
+            
+            /* Make parameter sliders stack vertically on mobile */
+            .parameter-sliders {
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 0.8rem !important;
+            }
+            
+            .parameter-sliders .control-group {
+                width: 100% !important;
+                margin-bottom: 0.5rem !important;
+            }
+            
+            /* Adjust plot container for mobile */
+            .plot-container {
+                width: 100% !important;
+                min-width: 0 !important;
+            }
+            
+            /* Make info section more compact on mobile */
+            .info-section .section-content {
+                padding: 1rem !important;
+            }
+            
+            .info-section .section-content > div {
+                font-size: 0.85rem !important;
+            }
+            
+            .info-section .section-content h3 {
+                font-size: 1rem !important;
+            }
+            
+            .info-section .section-content h4 {
+                font-size: 0.9rem !important;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            /* Extra small screens */
+            .container {
+                padding: 10px !important;
+            }
+            
+            .section-header {
+                padding: 0.4rem 0.6rem !important;
+                font-size: 0.85rem !important;
+            }
+            
+            .controls-panel,
+            .data-controls-panel {
+                padding: 0.8rem !important;
+            }
+            
+            .control-group {
+                margin-bottom: 0.6rem !important;
+            }
+            
+            .control-label {
+                font-size: 0.7rem !important;
+            }
+            
+            .value-display {
+                font-size: 0.7rem !important;
+            }
+            
+            .btn {
+                font-size: 0.75rem !important;
+                padding: 0.4rem 0.6rem !important;
+            }
         }
         
         /* Reference modal */
@@ -537,7 +620,7 @@
                         
                         <!-- Column 2: Parameter Sliders -->
                         <div class="controls-panel">
-                            <div class="controls">
+                            <div class="controls parameter-sliders">
                                 <div class="control-group">
                                     <label class="control-label">Transmission Rate (β)</label>
                                     <input type="range" id="beta" class="slider" min="0.1" max="2.0" step="0.05" value="0.7">
