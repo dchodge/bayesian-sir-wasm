@@ -2000,7 +2000,7 @@ async function runInterventionSimulation(beta, gamma, initialInfected, timePerio
     const R = [];
     const V = []; // Vaccinated compartment
     
-    const dt = 0.1;
+    const dt = 1.0; // Match C++ simulation time step
     const steps = Math.floor(timePeriod / dt);
     
     // Initial conditions
@@ -2010,77 +2010,83 @@ async function runInterventionSimulation(beta, gamma, initialInfected, timePerio
     let v = 0.0; // Vaccinated
     
     for (let step = 0; step <= steps; step++) {
-        const t = step * dt;
+        const t = step; // Match C++ simulation: t = 0, 1, 2, ..., timePeriod
+        
+        // Record data at time t (like C++ version)
         time.push(t);
-        
-        // Calculate vaccination rate (linear ramp from start to end time)
-        let vaccinationRate = 0;
-        if (t >= startTime && t <= endTime) {
-            const progress = (t - startTime) / (endTime - startTime);
-            vaccinationRate = (coverage / (endTime - startTime)) * (1 - progress);
-        }
-        
-        // Calculate current protection level based on waning model
-        let currentProtection = 0;
-        if (t > 0) {
-            switch (waningDistribution) {
-                case 'exponential':
-                    currentProtection = calculateWaningExponential(t, waningProtection, waningRate);
-                    break;
-                case 'gamma':
-                    currentProtection = calculateWaningGamma(t, waningProtection, waningRate, 2);
-                    break;
-                case 'erlang3':
-                    currentProtection = calculateWaningErlang3(t, waningProtection, waningRate);
-                    break;
-                default:
-                    currentProtection = calculateWaningExponential(t, waningProtection, waningRate);
-            }
-        }
-        
-        // Calculate waning rate based on distribution
-        let waningToSusceptible = 0;
-        
-        if (waningRate === 0) {
-            // No waning if loss rate is zero
-            waningToSusceptible = 0;
-        } else if (waningDistribution === 'exponential') {
-            // Direct transition: V -> S
-            waningToSusceptible = waningRate;
-        } else if (waningDistribution === 'gamma') {
-            // Gamma distribution with shape parameter = 2
-            waningToSusceptible = waningRate * 2;
-        } else if (waningDistribution === 'erlang3') {
-            // Erlang-3 distribution with shape parameter = 3
-            waningToSusceptible = waningRate * 3;
-        }
-        
-        // SIRS with vaccination and waning dynamics
-        // Vaccinated individuals lose immunity and become susceptible
-        const dsdt = -beta * s * i - vaccinationRate * s + waningToSusceptible * v;
-        const didt = beta * s * i - gamma * i;
-        const drdt = gamma * i;
-        
-        // Vaccination dynamics: V -> S (waning)
-        const dvdt = vaccinationRate * s - waningToSusceptible * v;
-        
-        // Update compartments
-        s = Math.max(0, s + dsdt * dt);
-        i = Math.max(0, i + didt * dt);
-        r = Math.max(0, r + drdt * dt);
-        v = Math.max(0, v + dvdt * dt);
-        
-        // Normalize to ensure S + I + R + V = 1
-        const total = s + i + r + v;
-        s /= total;
-        i /= total;
-        r /= total;
-        v /= total;
-        
         S.push(s * 100);
         I.push(i * 100);
         R.push(r * 100);
         V.push(v * 100);
+        
+        // Apply differential equations if t < timePeriod (like C++ version)
+        if (t < timePeriod) {
+            // Calculate vaccination rate (constant rate to achieve coverage over time period)
+            let vaccinationRate = 0;
+            if (t >= startTime && t <= endTime) {
+                // Constant rate to achieve total coverage over the vaccination period
+                vaccinationRate = coverage / (endTime - startTime);
+            }
+            
+            // Calculate current protection level based on waning model
+            // Only apply waning if vaccination has actually occurred
+            let currentProtection = 0;
+            if (t > startTime) {
+                const timeSinceVaccination = t - startTime;
+                switch (waningDistribution) {
+                    case 'exponential':
+                        currentProtection = calculateWaningExponential(timeSinceVaccination, waningProtection, waningRate);
+                        break;
+                    case 'gamma':
+                        currentProtection = calculateWaningGamma(timeSinceVaccination, waningProtection, waningRate, 2);
+                        break;
+                    case 'erlang3':
+                        currentProtection = calculateWaningErlang3(timeSinceVaccination, waningProtection, waningRate);
+                        break;
+                    default:
+                        currentProtection = calculateWaningExponential(timeSinceVaccination, waningProtection, waningRate);
+                }
+            }
+            
+            // Calculate waning rate based on distribution
+            let waningToSusceptible = 0;
+            
+            if (waningRate === 0) {
+                // No waning if loss rate is zero
+                waningToSusceptible = 0;
+            } else if (waningDistribution === 'exponential') {
+                // Direct transition: V -> S
+                waningToSusceptible = waningRate;
+            } else if (waningDistribution === 'gamma') {
+                // Gamma distribution with shape parameter = 2
+                waningToSusceptible = waningRate * 2;
+            } else if (waningDistribution === 'erlang3') {
+                // Erlang-3 distribution with shape parameter = 3
+                waningToSusceptible = waningRate * 3;
+            }
+            
+            // SIRS with vaccination and waning dynamics
+            // Vaccinated individuals lose immunity and become susceptible
+            const dsdt = -beta * s * i - vaccinationRate * s + waningToSusceptible * v;
+            const didt = beta * s * i - gamma * i;
+            const drdt = gamma * i;
+            
+            // Vaccination dynamics: V -> S (waning)
+            const dvdt = vaccinationRate * s - waningToSusceptible * v;
+            
+            // Update compartments
+            s = Math.max(0, s + dsdt * dt);
+            i = Math.max(0, i + didt * dt);
+            r = Math.max(0, r + drdt * dt);
+            v = Math.max(0, v + dvdt * dt);
+            
+            // Normalize to ensure S + I + R + V = 1
+            const total = s + i + r + v;
+            s /= total;
+            i /= total;
+            r /= total;
+            v /= total;
+        }
     }
     
     return { time, S, I, R, V };
@@ -2088,26 +2094,31 @@ async function runInterventionSimulation(beta, gamma, initialInfected, timePerio
 
 // Calculate intervention impact metrics
 function calculateInterventionImpact(baseline, intervention, coverage) {
+    // Get population size for proper scaling
+    const populationSize = parseInt(document.getElementById('population_size').value);
+    
     // Find peak infections
     const baselinePeak = Math.max(...baseline.I);
     const interventionPeak = Math.max(...intervention.I);
     const peakReduction = ((baselinePeak - interventionPeak) / baselinePeak * 100).toFixed(1);
     
     // Calculate total cases averted (area under curve difference)
+    // Convert percentages to absolute numbers using population size
     let baselineCases = 0;
     let interventionCases = 0;
     
     for (let i = 0; i < baseline.I.length - 1; i++) {
         const dt = baseline.time[i + 1] - baseline.time[i];
-        baselineCases += baseline.I[i] * dt;
-        interventionCases += intervention.I[i] * dt;
+        // Convert percentage to absolute number: (percentage/100) * population
+        baselineCases += (baseline.I[i] / 100) * populationSize * dt;
+        interventionCases += (intervention.I[i] / 100) * populationSize * dt;
     }
     
-    const casesAverted = (baselineCases - interventionCases).toFixed(0);
+    const casesAverted = Math.round(baselineCases - interventionCases);
     
     return {
         peakReduction: peakReduction + '%',
-        casesAverted: casesAverted,
+        casesAverted: casesAverted.toLocaleString(), // Format with commas
         coverageAchieved: (coverage * 100).toFixed(0) + '%'
     };
 }
@@ -2318,21 +2329,26 @@ function downloadInterventionData() {
     
     try {
         // Prepare CSV data
-        const maxLength = Math.max(baselineData.time.length, interventionData.time.length);
         const csvRows = [];
         
         // Header
-        csvRows.push('time,baseline_infected,intervention_infected,intervention_vaccinated');
+        csvRows.push('time,baseline_infected,baseline_susceptible,baseline_recovered,intervention_infected,intervention_susceptible,intervention_recovered,intervention_vaccinated');
         
-        // Data rows
-        for (let i = 0; i < maxLength; i++) {
-            const time = i < baselineData.time.length ? baselineData.time[i] : 
-                        i < interventionData.time.length ? interventionData.time[i] : i;
-            const baselineInfected = i < baselineData.I.length ? baselineData.I[i] : '';
-            const interventionInfected = i < interventionData.I.length ? interventionData.I[i] : '';
-            const interventionVaccinated = i < interventionData.V.length ? interventionData.V[i] : '';
+        // Data rows - both datasets should have the same time array
+        const timeArray = baselineData.time || interventionData.time;
+        const length = timeArray.length;
+        
+        for (let i = 0; i < length; i++) {
+            const time = timeArray[i];
+            const baselineInfected = i < baselineData.I.length ? baselineData.I[i].toFixed(3) : '';
+            const baselineSusceptible = i < baselineData.S.length ? baselineData.S[i].toFixed(3) : '';
+            const baselineRecovered = i < baselineData.R.length ? baselineData.R[i].toFixed(3) : '';
+            const interventionInfected = i < interventionData.I.length ? interventionData.I[i].toFixed(3) : '';
+            const interventionSusceptible = i < interventionData.S.length ? interventionData.S[i].toFixed(3) : '';
+            const interventionRecovered = i < interventionData.R.length ? interventionData.R[i].toFixed(3) : '';
+            const interventionVaccinated = i < interventionData.V.length ? interventionData.V[i].toFixed(3) : '';
             
-            csvRows.push(`${time},${baselineInfected},${interventionInfected},${interventionVaccinated}`);
+            csvRows.push(`${time.toFixed(3)},${baselineInfected},${baselineSusceptible},${baselineRecovered},${interventionInfected},${interventionSusceptible},${interventionRecovered},${interventionVaccinated}`);
         }
         
         // Create and download file
