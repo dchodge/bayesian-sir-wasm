@@ -2,6 +2,7 @@
 
 A web-based platform for Bayesian inference of compartmental epidemic models with real-time parameter estimation, vaccine intervention analysis, and waning immunity modeling.
 
+
 [![Build and Deploy](https://github.com/dchodge/bayesian-sir-wasm/actions/workflows/deploy.yml/badge.svg)](https://github.com/dchodge/bayesian-sir-wasm/actions/workflows/deploy.yml)
 
 ## 🚀 Live Demo
@@ -78,7 +79,7 @@ Where yᵢ are observed incidence data and I(tᵢ) are model predictions.
 - 📱 **Interactive Interface**: Real-time parameter adjustment with immediate visual feedback
 - 📊 **Data Export**: Download simulation results as CSV and plots as PNG for further analysis
 
-## How BayesEpi Works
+## How It Works
 
 ### User Workflow
 
